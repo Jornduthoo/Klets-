@@ -1,0 +1,52 @@
+/* Dashboard en digibord */
+body.leerkracht { background: #e9e4d8; }
+body.leerkracht .login { color: var(--ink); }
+body.leerkracht .login-voet a { color: var(--info); }
+.pin-blok { max-width: 420px; margin: 24px auto; display: grid; gap: 10px; }
+.dash { max-width: 1400px; margin: 0 auto; padding: 12px 16px 40px; }
+.dash-kop { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--nacht); color: #f4ead3; padding: 10px 14px; border-radius: 10px; border: var(--rand); }
+.logo.mini { flex: none; white-space: nowrap; font-size: 34px; text-shadow: 2px 2px 0 var(--accent2), 4px 4px 0 var(--ink); letter-spacing: 2px; }
+.dash-sub { flex: 1; }
+.dash-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+.dash-main { display: grid; gap: 12px; }
+.dash-blok { background: var(--perkament); border: var(--rand); border-radius: 10px; padding: 12px 16px; box-shadow: 3px 3px 0 var(--ink); }
+.dash-blok h2 { margin: 0 0 8px; font-size: 1.2em; }
+.knoppen.links { justify-content: flex-start; align-items: center; }
+.schakel { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.schakel input { width: 22px; height: 22px; }
+.tabel-scroll { overflow: auto; max-width: 100%; border: 2px solid var(--ink); border-radius: 8px; background: #fff; }
+.dash-tabel { border-collapse: collapse; width: 100%; font-size: .9em; }
+.dash-tabel th, .dash-tabel td { border-bottom: 1px solid #ddd3bf; padding: 6px 8px; text-align: left; vertical-align: top; }
+.dash-tabel thead th { background: var(--perkament2); position: sticky; top: 0; z-index: 1; }
+.matrix .cel { text-align: center; font-weight: 700; min-width: 54px; font-size: .85em; }
+.matrix .cel.behaald { background: var(--goed-bg); color: #1d6b4a; }
+.matrix .cel.oefenen { background: var(--mis-bg); color: #8a4d10; }
+.matrix .cel.open { background: #fff; }
+.matrix .cel.nvt { background: #f2efe8; color: #b4ab98; }
+.matrix .cel.klas { background: #f4ead3; }
+.matrix th.sticky { position: sticky; left: 0; background: #fffaf0; z-index: 2; min-width: 240px; }
+.matrix .code-th small { display: block; font-weight: 400; color: var(--zacht); font-size: .8em; }
+.naam-th { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+.filters { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0; }
+.filters select, .form-grid select { border: 2px solid var(--ink); border-radius: 6px; padding: 6px; background: #fff; min-height: 40px; }
+.revanche { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.rev-kaart { background: #fff; border: 2px solid var(--ink); border-radius: 8px; padding: 8px 12px; }
+.rev-kaart h3 { margin: 0; font-size: 1em; }
+.form-grid { display: grid; grid-template-columns: 180px 1fr; gap: 10px 14px; align-items: center; }
+.invoer.kort { width: 120px; display: inline-block; }
+.code-chip { background: #fff3d6; border: 1px solid #d8c18a; border-radius: 4px; padding: 0 4px; margin-right: 4px; display: inline-block; }
+.week.dash-tabel td:nth-child(2) { min-width: 240px; }
+details summary { cursor: pointer; color: var(--info); }
+
+/* digibord */
+body.digibord { background: #0d1030; color: #f4ead3; }
+.bord { min-height: 100vh; display: grid; grid-template-rows: 1fr auto auto; gap: 10px; padding: 12px; }
+.bord-scene { position: relative; border: 4px solid var(--ink); border-radius: 12px; overflow: hidden; background: #0d1030; }
+#boss { width: 100%; height: 100%; max-height: 78vh; object-fit: contain; image-rendering: pixelated; display: block; background: #0d1030; }
+.bord-hp { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: min(720px, 90%); text-align: center; }
+.bord-naam { font-family: var(--pixel); font-size: clamp(20px, 3vw, 40px); font-weight: 700; text-shadow: 3px 3px 0 var(--ink); }
+.bord-cijfers { font-size: clamp(18px, 2.2vw, 30px); font-weight: 700; text-shadow: 2px 2px 0 var(--ink); }
+.bord-info { font-size: clamp(18px, 2.2vw, 30px); text-align: center; font-weight: 700; }
+.bord-knoppen { display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap; color: #f4ead3; }
+.bord-knoppen .invoer { color: var(--ink); }
+@media (max-width: 720px) { .form-grid { grid-template-columns: 1fr; } }
