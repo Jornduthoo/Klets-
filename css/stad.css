@@ -226,3 +226,70 @@ body.in-aanmelden { background: linear-gradient(180deg, #6db7f0 0%, #b9def8 46%,
 .bord-kaartje .bk-gids img { width: 56px; height: 56px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #fff, #dcecf9); border: 3px solid var(--k); }
 .bord-gids .marker-rond img { width: 36px; height: 36px; }
 .dash-avatar { width: 40px; height: 40px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #fff, #dcecf9); }
+
+/* ---------- de weerwijzer in de balk (het echte weer van Brugge) ---------- */
+.weer-wijzer { display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 8px; border-radius: 26px; border: 1px solid var(--s-rand);
+  background: var(--s-paneel); box-shadow: var(--s-schaduw); cursor: pointer; color: var(--s-ink); max-width: 190px; }
+.weer-wijzer:hover { transform: translateY(-1px); }
+.weer-wijzer .weer-ico { width: 30px; height: 30px; flex: none; color: var(--s-blauw); }
+.weer-tekst { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; min-width: 0; }
+.weer-tekst b { font-size: .95em; white-space: nowrap; }
+.weer-tekst small { font-size: .72em; color: var(--s-zacht); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+.cijfer.water b { color: #1f8be0; }
+
+/* markers van de themagebouwen (labo's) */
+.marker.labo .marker-rond { background: radial-gradient(circle at 50% 35%, #ffffff, #bfe3ff); box-shadow: 0 0 0 3px #1f8be0, var(--s-schaduw); }
+.marker.labo .marker-rond .ico { width: 24px; height: 24px; color: #15548c; }
+
+/* zones proper water */
+.zone-lijst { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 8px; }
+.zone-lijst li { display: grid; grid-template-columns: 1fr 160px; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--s-rand); border-radius: 10px; background: #f7fbff; }
+.zone-lijst li.ok { background: #eafaf2; border-color: #9fdcc0; }
+.zone-lijst small { display: block; color: var(--s-zacht); }
+
+/* het labo-scherm (binnen in een gebouw) */
+.labo-overlay { align-items: stretch; }
+.paneel.labo { max-width: 1040px; width: 100%; display: flex; flex-direction: column; }
+.labo-kop { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--s-rand); flex-wrap: wrap; }
+.labo-kop .portret, .labo-kop img { width: 56px; height: 56px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #fff, #dcecf9); }
+.labo-titel { flex: 1; min-width: 160px; }
+.labo-titel h2 { margin: 0; font-size: 1.25em; }
+.labo-titel small { color: var(--s-zacht); }
+.labo-body { padding: 12px 14px 18px; overflow: auto; }
+.labo-canvas { width: 100%; height: auto; display: block; border-radius: 12px; background: #eef3f8; border: 1px solid var(--s-rand); }
+.interieur { display: grid; gap: 10px; }
+.bank-knoppen, .sim-knoppen { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn.klaar { background: #eafaf2; border-color: #9fdcc0; }
+.werkbank { display: grid; gap: 10px; }
+.weertabel { border-collapse: collapse; width: 100%; max-width: 520px; }
+.weertabel th, .weertabel td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--s-rand); }
+.weertabel th { color: var(--s-zacht); font-weight: 600; width: 40%; }
+.sim-regel { display: flex; align-items: center; gap: 8px; margin: 4px 0; flex-wrap: wrap; }
+.sim-regel > span:first-child { min-width: 240px; }
+.invoer.getal { width: 90px; }
+.invoer.goed { border-color: #2f9c62; background: #eafaf2; }
+.invoer.mis { border-color: #d9674a; background: #fdeeea; }
+.sim-melding { min-height: 1.4em; font-weight: 600; }
+.sim-melding.goed { color: #1f7a4d; }
+.sim-melding.mis { color: #b4452c; }
+.sim-meter { font-variant-numeric: tabular-nums; }
+.film { display: grid; gap: 8px; }
+.film-knoppen { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.film-tekst { background: #f7fbff; border: 1px solid var(--s-rand); border-radius: 10px; padding: 8px 12px; min-height: 3.4em; }
+.film-balk { height: 6px; border-radius: 4px; background: #dde5ef; overflow: hidden; }
+.film-balk > span { display: block; height: 100%; background: linear-gradient(90deg, #1f8be0, #35e08f); }
+.labo-meter { min-width: 150px; }
+.missie-lijst.labos .missie-rij { align-items: center; }
+.paneel.labo { max-height: calc(100vh - 24px); }
+.labo-canvas { max-width: 620px; margin: 0 auto; }
+.film { grid-template-columns: 1fr; }
+.film-portret { width: 72px; height: 72px; }
+.film-onder { display: grid; grid-template-columns: 80px 1fr; gap: 10px; align-items: start; }
+.film-beeld { position: relative; display: grid; justify-items: center; }
+.film-gids { position: absolute; right: 8px; bottom: 4px; }
+.film-gids img { width: 72px; height: 72px; }
+.film-zegt { font-style: italic; color: var(--s-zacht); margin: 2px 0; }
+.film-balk { display: flex; gap: 4px; height: 8px; background: none; }
+.film-balk .stip { flex: 1; background: #dde5ef; border-radius: 4px; height: 8px; display: block; }
+.film-balk .stip.nu { background: #1f8be0; }
+.film-balk .stip.gezien { background: #35e08f; }

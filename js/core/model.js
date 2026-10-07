@@ -1,5 +1,6 @@
 // Domeinlogica: missiecatalogus, XP en rangen, doelen per leerling, klasstad, geheime codes.
 import { RANGEN, XP, BEHAALD_GRENS, MACHT, GIDSEN } from '../config.js';
+import { themaVoor } from '../../data/themas.js';
 
 // ---------- Rangen ----------
 export function rangVoor(xp = 0) {
@@ -10,31 +11,28 @@ export function rangVoor(xp = 0) {
   return { ...nu, index: i, volgende, pct };
 }
 
-// ---------- Missiecatalogus ----------
-function naamUitTekst(webapp, titel) {
-  const m = /'([^']{3,40})'/.exec(webapp || '');
-  return m ? m[1] : titel;
-}
-
-/** Combineer lesdata (handleiding) met de geschreven oefeningen tot missies. */
-export function buildCatalog(queste, oefeningen) {
+// ---------- Missiecatalogus uit een thema ----------
+/** Alles wat een reiziger in de stad kan doen deze thema-periode: missies, labo's en de eindbaas. */
+export function themaCatalog(thema) {
   const missies = [];
-  for (const les of queste.lessen) {
-    const ex = oefeningen[les.id];
-    if (!les.webapp && !ex) continue;
-    const kind = ex?.soort || (ex ? 'oefening' : 'klas');
+  for (const m of thema.missies || []) {
+    missies.push({ ...m, kind: m.check ? 'check' : 'oefening', macht: m.domein, thema: thema.id });
+  }
+  for (const [id, lab] of Object.entries(thema.labos || {})) {
     missies.push({
-      id: les.id, les, week: les.week, dag: les.dag, blok: les.blok,
-      naam: ex?.naam || naamUitTekst(les.webapp, les.titel),
-      intro: ex?.intro || '',
-      gids: ex?.gids || les.gids, macht: ex?.macht || les.macht,
-      sets: ex?.sets || null, kind,
+      id: 'labo:' + id, labo: id, kind: 'labo', week: lab.week, dag: lab.dag, naam: lab.naam, intro: lab.uitleg,
+      gids: lab.gids, macht: lab.domein, gebouw: lab.gebouw, stations: lab.stations, sets: lab.test, thema: thema.id,
     });
   }
+  const eb = thema.eindbaas;
+  if (eb) missies.push({ id: 'eindbaas:' + eb.id, kind: 'eindbaas', week: eb.week, dag: eb.dag, naam: eb.naam,
+    intro: eb.verhaal, gids: eb.gids, macht: 'Onderzoek', sets: eb.test, thema: thema.id });
   return missies;
 }
+/** Het labo achter een missie-id ('labo:<id>'). */
+export function laboVan(thema, missieId) { return thema.labos?.[String(missieId).replace(/^labo:/, '')] || null; }
 
-const FALLBACK = { taalsleutels: ['taalsleutels', 'kompas', 'telescoop'], kompas: ['kompas', 'taalsleutels', 'telescoop'], telescoop: ['telescoop', 'kompas', 'taalsleutels'] };
+const FALLBACK = { kompas: ['kompas', 'telescoop'], telescoop: ['telescoop', 'kompas'], taalsleutels: ['kompas', 'telescoop'] };
 
 /** Welke route en welke itemset krijgt deze leerling voor deze missie? */
 export function kiesSet(missie, routeWens) {
@@ -96,15 +94,17 @@ export function mistDichtheid(settings, pupils) {
 }
 
 // ---------- Klasstad ----------
-export function machtVanCode(code) {
-  if (code.startsWith('1.')) return 'Taal';
-  if (code.startsWith('2.')) return 'Getal';
-  if (code.startsWith('8.') || code.startsWith('6.')) return 'Maker';
-  if (code.startsWith('9-2')) return 'Brein';
+export function machtVanCode(code, thema = themaVoor()) {
+  const d = thema?.doelen?.[code];
+  if (d?.domein) return d.domein;
   if (code.startsWith('9-3') || code.startsWith('11.')) return 'Hart';
-  return 'Wereld';
+  if (code.startsWith('3.7')) return 'Onderzoek';
+  if (code.startsWith('3.6') || code.startsWith('8.') || code.startsWith('6.')) return 'Techniek';
+  if (code.startsWith('3.')) return 'Wetenschap';
+  if (code.startsWith('5.')) return 'Geschiedenis';
+  return 'Aardrijkskunde';
 }
-export const GEBOUWTYPE = { Taal: 'Bibliotheek', Getal: 'Rekentoren', Wereld: 'Kaartenhuis', Hart: 'Vredestuin', Maker: 'Werkhuis', Brein: 'Uitkijktoren' };
+export const GEBOUWTYPE = { Aardrijkskunde: 'Kaartenhuis', Geschiedenis: 'Archiefhuis', Wetenschap: 'Proefhuis', Techniek: 'Werkhuis', Hart: 'Vredestuin', Onderzoek: 'Uitkijktoren' };
 
 /** Elk doel dat minstens één leerling behaalde = één gebouw; hoe meer leerlingen, hoe hoger. */
 export function klasstadGebouwen(stats, doelen) {
@@ -121,7 +121,7 @@ export function klasstadGebouwen(stats, doelen) {
   }).sort((a, b) => a.code.localeCompare(b.code, 'nl', { numeric: true }));
 }
 
-// ---------- Geheime codes ----------
+// ---------- Geheime codes en uitrusting ----------
 export const KOSMETIEK = {
   'pet-oranje': { naam: 'Tella-pet', slot: 'hoofd' },
   'veer': { naam: 'Woordje-veer', slot: 'hoofd' },
@@ -137,41 +137,32 @@ export const KOSMETIEK = {
   'lantaarn': { naam: 'Lantaarn (licht in de nacht)', slot: 'hand' },
   'spoor-sterren': { naam: 'Sterrenspoor', slot: 'spoor' },
   'spoor-blaadjes': { naam: 'Blaadjesspoor', slot: 'spoor' },
-  'spoor-noten': { naam: 'Muziekspoor', slot: 'spoor' },
-  'spoor-letters': { naam: 'Letterspoor', slot: 'spoor' },
   'spoor-licht': { naam: 'Lichtspoor', slot: 'spoor' },
   'kleur-goud': { naam: 'Gouden jas', slot: 'kleur' },
   'kleur-nacht': { naam: 'Nachtblauwe jas', slot: 'kleur' },
 };
-const VAST = {
-  'TD-NACHT': 'pet-oranje', 'NAAM-LICHT': 'veer', 'BIEP-01': 'koptelefoon', 'SCHILD-ROOD': 'sjaal-rood', 'IKBEN-1': 'spoor-sterren',
-  'SPRONG-100': 'rugzak', 'HAVIK-7': 'bril', 'UI-LAGEN': 'muts', 'SALAAM-SHALOM': 'lantaarn', 'DELER-24': 'kleur-goud',
-  'LEEUW-NIEUW': 'spoor-blaadjes', 'KLUIS-OPEN': 'cape', 'TAART-75': 'bladerkrans', 'NADIA-FIER': 'spoor-letters',
-  'TEGENFLUISTER': 'kleur-nacht', 'SOLO-TOET': 'spoor-noten', 'NAAM-VERHAAL': 'sjaal-blauw', 'MIN-TIEN': 'muts',
-  'LEESFEEST': 'feesthoed', 'WELKOM-1': 'bladerkrans', 'BRUG-VREDE': 'spoor-licht', 'POSTKAART-1': 'rugzak',
-};
-const KAARTCODES = /^(MIST-WEG-\d|VERGEETAL|KLETSKAART|LANTAARN)$/;
+/** Kosmetiek plus de themakledij van alle thema's met inhoud. */
+export function uitrustingLijst(thema = themaVoor()) {
+  const uit = {};
+  for (const [id, v] of Object.entries(thema?.uitrusting || {})) uit[id] = { ...v, thema: thema.id };
+  return { ...KOSMETIEK, ...uit };
+}
 
 export function normCode(s) { return String(s || '').toUpperCase().replace(/\s+/g, '').replace(/[‐-―_]/g, '-'); }
 
-/** Alle codes uit de Logboek-teksten, met de les waar ze staan. */
-export function codeIndex(queste) {
+/** Alle geheime codes van het thema (uit het Expeditieboek), met de week waar ze staan. */
+export function codeIndex(thema = themaVoor()) {
   const idx = {};
-  for (const les of queste.lessen) for (const c of les.codes || []) {
-    if (!idx[c]) idx[c] = { code: c, week: les.week, lessen: [] };
-    idx[c].lessen.push(les.id);
-  }
+  for (const [code, v] of Object.entries(thema?.codes || {})) idx[code] = { code, week: v.week, geeft: v.geeft, waar: v.waar, beloning: v.beloning };
   return idx;
 }
-/** Beloning voor een code: altijd extra (kosmetiek, kaartstuk, verhaal), nooit kerninhoud. */
-export function beloningVoor(code) {
-  if (KAARTCODES.test(code)) {
-    const n = /(\d)$/.exec(code)?.[1] || ({ VERGEETAL: 3, KLETSKAART: 4, LANTAARN: 6 }[code] || 1);
-    return { soort: 'kaartstuk', id: 'kaartstuk-' + n, naam: `Stuk ${n} van de wereldkaart` };
-  }
-  let id = VAST[code];
-  if (!id) { const keys = Object.keys(KOSMETIEK); let h = 0; for (const ch of code) h = (h * 31 + ch.charCodeAt(0)) >>> 0; id = keys[h % keys.length]; }
-  return { soort: 'kosmetiek', id, naam: KOSMETIEK[id].naam };
+/** Beloning voor een code: altijd extra (kledij of decor), nooit kerninhoud. */
+export function beloningVoor(code, thema = themaVoor()) {
+  const c = thema?.codes?.[normCode(code)];
+  const alle = uitrustingLijst(thema);
+  let id = c?.beloning;
+  if (!id || !alle[id]) { const keys = Object.keys(alle); let h = 0; for (const ch of code) h = (h * 31 + ch.charCodeAt(0)) >>> 0; id = keys[h % keys.length]; }
+  return { soort: 'kosmetiek', id, naam: alle[id].naam, geeft: c?.geeft || '' };
 }
 
 export function gidsNaam(id) { return GIDSEN[id]?.naam || id; }

@@ -52,7 +52,7 @@ export function runMission(opts) {
     add(body, h('div', { class: 'gids-zegt' }, h('p', {}, missie.kind === 'klas'
       ? `Deze opdracht doe je in de klas of in je Logboek. ${missie.les.titel}.`
       : 'Voor deze missie zijn nog geen digitale oefeningen.')),
-    h('p', { class: 'tip' }, 'In een volgende versie van Klets! komt deze missie ook digitaal. Je mist niets: je leerkracht weet het.'));
+    h('p', { class: 'tip' }, 'In een volgende versie van Vagant komt deze missie ook digitaal. Je mist niets: je leerkracht weet het.'));
     btn.textContent = 'Terug naar de stad'; btn.onclick = () => close(null);
     return done;
   }

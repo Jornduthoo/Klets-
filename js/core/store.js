@@ -14,10 +14,11 @@ import { BACKEND, DEFAULT_PIN } from '../config.js';
 
 export const DEFAULT_SETTINGS = {
   pin: DEFAULT_PIN,
+  huidigThema: 'waterwereld',   // welk thema de klas nu speelt (zie data/themas.js)
   huidigeWeek: 1,
   allesOpen: false,
   mistDoel: 1200,        // XP per leerling waarbij de mist helemaal weg is
-  klasNaam: 'Station Klets',
+  klasNaam: '',          // leeg = de naam van de themastad (bv. Zwinvliet)
   dagNacht: 'auto',      // 'auto' (volgt de klasmeter) | 'dag' | 'nacht'
 };
 
@@ -66,7 +67,7 @@ export class LocalStore {
   }
   /** merge=true voegt samen (bv. resultaten van een ander toestel), merge=false vervangt alles. */
   async importAll(data, { merge = true } = {}) {
-    if (!data || data.formaat !== 'klets-export') throw new Error('Dit is geen Klets!-exportbestand.');
+    if (!data || data.formaat !== 'klets-export') throw new Error('Dit is geen Vagant-exportbestand.');
     if (!merge) {
       this._write('settings', data.settings || {}); this._write('pupils', data.pupils || {});
       this._write('attempts', data.attempts || []); this._write('gallery', data.gallery || []); this._write('events', data.events || []);

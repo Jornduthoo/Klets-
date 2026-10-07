@@ -171,7 +171,8 @@ const NS = 'http://www.w3.org/2000/svg';
 function s(tag, attrs = {}, ...kids) { const el = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); kids.forEach(k => el.append(typeof k === 'string' ? document.createTextNode(k) : k)); return el; }
 
 TYPES.kaart = (item) => {
-  const k = item.kaart;
+  let k = item.kaart;
+  if (k.soort === 'wereld') k = wereldKaart(k);
   let svg, getAnswer, revealFn;
   if (k.soort === 'getallenas') {
     const W = 600, H = 120, x0 = 30, x1 = 570, y = 64;
@@ -248,7 +249,7 @@ TYPES.kaart = (item) => {
       g.dataset.id = r.id;
       const shape = r.pts ? s('polygon', { points: r.pts, class: 'vak' }) : s('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: r.rx ?? 6, class: 'vak' });
       g.append(shape);
-      if (r.label) g.append(s('text', { x: r.tx ?? (r.x + r.w / 2), y: r.ty ?? (r.y + r.h / 2 + 6), 'text-anchor': r.anchor || 'middle', class: 'rg-lbl' }, r.label));
+      if (r.label && r.toonLabel !== false) g.append(s('text', { x: r.tx ?? (r.x + r.w / 2), y: r.ty ?? (r.y + r.h / 2 + 6), 'text-anchor': r.anchor || 'middle', class: 'rg-lbl' }, r.label));
       const pick = () => { if (svg.dataset.klaar) return; chosen = r.id; regs.forEach(x => x.classList.remove('sel')); g.classList.add('sel'); };
       g.addEventListener('click', pick); g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
       regs.push(g); svg.append(g);
@@ -259,6 +260,59 @@ TYPES.kaart = (item) => {
   }
   throw new Error('Onbekende kaartsoort ' + k.soort);
 };
+// ---------- de wereldkaart ----------
+// Een eenvoudige wereldkaart (vlakke projectie: lengte en breedte recht uitgerekt). De werelddelen staan
+// als achtergrond op de kaart; de aanklikbare gebieden (oceanen, landen, de Amazone, Kaap de Goede Hoop)
+// liggen eroverheen en krijgen GEEN naam op de kaart - anders staat het antwoord er al.
+const LAND = {
+  noordamerika: { naam: 'Noord-Amerika', punten: [[-168, 65], [-140, 70], [-125, 50], [-115, 32], [-105, 22], [-97, 18], [-83, 10], [-80, 25], [-72, 42], [-58, 46], [-56, 53], [-70, 60], [-82, 70], [-105, 72], [-130, 70]], tx: -100, ty: 46 },
+  groenland: { punten: [[-45, 60], [-20, 70], [-20, 82], [-50, 83], [-58, 76], [-55, 66]] },
+  zuidamerika: { naam: 'Zuid-Amerika', punten: [[-81, 8], [-72, 11], [-60, 10], [-50, 0], [-35, -6], [-38, -13], [-48, -25], [-58, -35], [-62, -41], [-70, -55], [-72, -45], [-71, -30], [-70, -18], [-76, -5], [-79, 2]], tx: -62, ty: -14 },
+  europa: { naam: 'Europa', punten: [[-10, 36], [0, 44], [10, 38], [18, 40], [28, 41], [40, 45], [45, 55], [38, 60], [30, 70], [12, 66], [5, 58], [-5, 50], [-10, 43]], tx: 14, ty: 52 },
+  afrika: { naam: 'Afrika', punten: [[-17, 15], [-16, 28], [-5, 36], [10, 37], [32, 31], [35, 22], [43, 12], [51, 12], [41, -1], [40, -15], [35, -24], [25, -34], [18, -34], [12, -18], [9, -1], [6, 4], [-7, 4], [-17, 10]], tx: 20, ty: 4 },
+  azie: { naam: 'Azië', punten: [[28, 41], [45, 42], [60, 45], [75, 38], [88, 28], [97, 20], [105, 10], [120, 22], [122, 38], [130, 43], [142, 50], [155, 60], [180, 66], [150, 72], [110, 76], [80, 73], [60, 70], [45, 68], [40, 55]], tx: 95, ty: 50 },
+  india: { punten: [[68, 24], [80, 22], [89, 22], [88, 15], [80, 8], [73, 16]] },
+  indonesie: { punten: [[95, 5], [120, 2], [140, -3], [140, -9], [118, -8], [100, -1]] },
+  australie: { punten: [[113, -22], [122, -18], [131, -12], [142, -11], [146, -19], [151, -25], [153, -30], [147, -38], [138, -35], [129, -32], [115, -34], [113, -26]] },
+  nieuwzeeland: { punten: [[166, -46], [172, -41], [175, -36], [178, -38], [174, -42], [170, -47]] },
+  antarctica: { naam: 'Antarctica', punten: [[-180, -68], [-100, -72], [-20, -70], [40, -68], [120, -70], [180, -68], [180, -90], [-180, -90]], tx: 0, ty: -80 },
+};
+const WERELD_GEBIED = {
+  grote: { naam: 'Grote Oceaan', punten: [[-175, 40], [-110, 40], [-80, -10], [-80, -45], [-175, -45], [-175, 0]] },
+  atlantisch: { naam: 'Atlantische Oceaan', punten: [[-48, 44], [-16, 44], [-5, 10], [-2, -35], [-45, -35], [-50, 5]] },
+  indisch: { naam: 'Indische Oceaan', punten: [[58, 4], [98, 4], [105, -30], [100, -42], [58, -42]] },
+  australie: { naam: 'Australië', punten: LAND.australie.punten },
+  nieuwzeeland: { naam: 'Nieuw-Zeeland', punten: [[163, -49], [180, -49], [180, -33], [163, -33]] },
+  brazilie: { naam: 'Brazilië', punten: [[-70, -2], [-50, 0], [-35, -6], [-39, -16], [-50, -24], [-58, -21], [-70, -10]] },
+  argentinie: { naam: 'Argentinië', punten: [[-70, -22], [-62, -25], [-58, -35], [-68, -53], [-72, -45], [-70, -30]] },
+  kaap: { naam: 'Kaap de Goede Hoop', punten: [[14, -30], [24, -30], [24, -38], [14, -38]] },
+  amazone: { naam: 'de Amazone', punten: [[-73, -1], [-50, 1], [-49, -5], [-73, -7]] },
+  schelde: { naam: 'de Schelde', punten: [[1, 54], [7, 54], [7, 48], [1, 48]] },
+  noordzee: { naam: 'de Noordzee', punten: [[-4, 60], [8, 60], [8, 51], [-4, 51]] },
+};
+function lonLat([lon, lat]) { return [Math.round(((lon + 180) / 360) * 600 * 10) / 10, Math.round(((90 - lat) / 180) * 300 * 10) / 10]; }
+function pts(punten) { return punten.map(p => lonLat(p).join(',')).join(' '); }
+/** Zet een kaart van het soort 'wereld' om naar een gewone regiokaart. */
+function wereldKaart(k) {
+  const achtergrond = [
+    { tag: 'rect', attrs: { x: 0, y: 0, width: 600, height: 300, fill: '#bcdcee' } },
+  ];
+  for (const [id, L] of Object.entries(LAND)) {
+    achtergrond.push({ tag: 'polygon', attrs: { points: pts(L.punten), fill: id === 'antarctica' ? '#eef4f7' : '#cfe0b4', stroke: '#9bb389', 'stroke-width': 1 } });
+    if (L.naam) {
+      const [x, y] = lonLat([L.tx, L.ty]);
+      achtergrond.push({ tag: 'text', attrs: { x, y, 'text-anchor': 'middle', fill: '#4a5a3c', 'font-size': 11 }, tekst: L.naam });
+    }
+  }
+  // de evenaar, zodat je noord en zuid ziet
+  achtergrond.push({ tag: 'line', attrs: { x1: 0, x2: 600, y1: 150, y2: 150, stroke: '#7f9aad', 'stroke-width': 1, 'stroke-dasharray': '6 5' } });
+  const keuzes = k.gebieden || Object.keys(WERELD_GEBIED);
+  const regios = keuzes.filter(id => WERELD_GEBIED[id]).map(id => ({
+    id, label: WERELD_GEBIED[id].naam, toonLabel: false, pts: pts(WERELD_GEBIED[id].punten),
+  }));
+  return { soort: 'regio', viewBox: '0 0 600 300', achtergrond, regios, juist: k.juist };
+}
+
 function wrapKaart(item, svg, ready, check, reveal) {
   return { el: h('div', { class: 'kaart-wrap' }, mediaKnoppen(item), svg), ready, check, reveal: (r) => { svg.dataset.klaar = '1'; reveal(r); } };
 }

@@ -10,6 +10,18 @@ import { WIJKEN, RINGEN, RIJBAAN, gidsPlek, PLEIN, LAAN_HOEKEN, hoekVerschil } f
 const TAU = Math.PI * 2;
 const PLEIN_M = { x: PLEIN.klasmeter.x, z: PLEIN.klasmeter.z + 0.3 };
 const SCHAAL = { gids: 1.25, reiziger: 0.6, inwoner: 0.57 };
+
+// Elke gids staat er anders bij: Atlas tuurt traag over de stad, Byte wiebelt en zwaait kort en vaak,
+// Kroniek staat stil als een uil, Woordje roept er graag iets bij.
+const IDLE = {
+  atlas:   { pauze: [7, 12], zwaai: 2.2, kijk: 0.75, snel: 0.22, wiegel: 0.05 },
+  woordje: { pauze: [3, 6], zwaai: 1.6, kijk: 0.5, snel: 0.8, wiegel: 0.22 },
+  tella:   { pauze: [5, 9], zwaai: 1.4, kijk: 0.3, snel: 0.5, wiegel: 0.14 },
+  kroniek: { pauze: [10, 16], zwaai: 2.6, kijk: 0.22, snel: 0.14, wiegel: 0.02 },
+  bram:    { pauze: [6, 10], zwaai: 2.4, kijk: 0.35, snel: 0.3, wiegel: 0.08 },
+  byte:    { pauze: [2.5, 5], zwaai: 1.0, kijk: 0.6, snel: 1.1, wiegel: 0.3 },
+};
+const IDLE_STD = { pauze: [6, 10], zwaai: 1.8, kijk: 0.35, snel: 0.4, wiegel: 0.1 };
 // stoepvakken waar inwoners wandelen (tussen twee lanen, weg van het spoor)
 const STOEPVAKKEN = [[15, 55], [65, 115], [125, 165], [195, 235], [245, 295], [305, 345]].map(([a, b]) => [a * Math.PI / 180, b * Math.PI / 180]);
 
@@ -90,13 +102,15 @@ export class Figuren3D {
     for (const f of this.figs) {
       let loopt = false;
       if (f.soort === 'gids') {
-        // staan, rondkijken en af en toe zwaaien
+        // staan, rondkijken en af en toe zwaaien, elke gids op zijn eigen manier
+        const id = IDLE[f.id] || IDLE_STD;
         f.volgendeZwaai -= dt;
-        if (f.volgendeZwaai < 0) { f.zwaaiT = 1.8; f.volgendeZwaai = 6 + this.rr() * 8; }
+        if (f.volgendeZwaai < 0) { f.zwaaiT = id.zwaai; f.volgendeZwaai = id.pauze[0] + this.rr() * (id.pauze[1] - id.pauze[0]); }
         if (f.zwaaiT > 0) f.zwaaiT -= dt;
         const doelZ = f.zwaaiT > 0 ? 1 : 0;
         f.zwaai += (doelZ - f.zwaai) * clamp(dt * 6, 0, 1);
-        f.yaw = f.basisYaw + Math.sin(t * 0.4 + f.i) * 0.35;
+        f.yaw = f.basisYaw + Math.sin(t * id.snel + f.i) * id.kijk + Math.sin(t * id.snel * 2.7 + f.i) * id.kijk * 0.25;
+        f.idleWiegel = id.wiegel;
       } else {
         if (f.wacht > 0) { f.wacht -= dt; }
         else {
@@ -118,8 +132,9 @@ export class Figuren3D {
         else if (f.pad === 'ik' && f.deur) f.yaw += hoekVerschil(Math.atan2(f.deur.x - f.x, f.deur.z - f.z) + Math.PI, f.yaw) * clamp(dt * 3, 0, 1);
         f.zwaai = 0;
       }
-      f.amp += ((loopt ? 1 : 0) - f.amp) * clamp(dt * 8, 0, 1);
-      f.fase += dt * (loopt ? 9 : 2);
+      const rust = f.soort === 'gids' ? (f.idleWiegel || 0) : 0;
+      f.amp += ((loopt ? 1 : rust) - f.amp) * clamp(dt * 8, 0, 1);
+      f.fase += dt * (loopt ? 9 : 2 + rust * 6);
       A[f.i].set(f.x, 0.02, f.z, f.yaw);
       B[f.i].set(SCHAAL[f.soort === 'ik' ? 'reiziger' : f.soort], f.fase, f.amp, f.zwaai);
     }

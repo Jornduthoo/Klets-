@@ -21,6 +21,14 @@ const P = {
   uit: '<path d="M14 4h4a2 2 0 012 2v12a2 2 0 01-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h10"/>',
   sluit: '<path d="M6 6l12 12M18 6L6 18"/>',
   doel: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+  // het weer
+  wolk: '<path d="M7 18h10a3.5 3.5 0 000-7 5 5 0 00-9.6-1.2A3.6 3.6 0 007 18z"/>',
+  regen: '<path d="M7 14h10a3.5 3.5 0 000-7 5 5 0 00-9.6-1.2A3.6 3.6 0 007 14z"/><path d="M9 17.5l-1 3M13 17.5l-1 3M17 17.5l-1 3"/>',
+  sneeuw: '<path d="M7 14h10a3.5 3.5 0 000-7 5 5 0 00-9.6-1.2A3.6 3.6 0 007 14z"/><path d="M9 19h.01M13 20.5h.01M16.5 18.5h.01"/>',
+  mist: '<path d="M4 9h16M6 13h12M4 17h16"/>',
+  storm: '<path d="M7 13h10a3.5 3.5 0 000-7 5 5 0 00-9.6-1.2A3.6 3.6 0 007 13z"/><path d="M13 15l-3 3h3l-2 3.5"/>',
+  water: '<path d="M3 15c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 6 0"/><path d="M3 10c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 6 0"/>',
+  labo: '<path d="M9 3h6M10.5 3v6.5L5.5 18a2.5 2.5 0 002.2 3.5h8.6A2.5 2.5 0 0018.5 18l-5-8.5V3"/><path d="M7.5 15h9"/>',
 };
 export function icoon(naam, klasse = 'ico') {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

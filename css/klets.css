@@ -62,7 +62,7 @@ a { color: var(--info); }
 .creator-prev { background: var(--nacht2); border: var(--rand); border-radius: 8px; padding: 10px; display: flex; justify-content: center; width: 100%; }
 .lbl { font-weight: 700; display: block; margin-bottom: 4px; }
 .keuze-rij { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
-.rij-lbl { width: 90px; font-weight: 700; }
+.rij-lbl { width: 108px; flex: none; font-weight: 700; overflow-wrap: break-word; }
 .stalen { display: flex; flex-wrap: wrap; gap: 6px; }
 .staal { border: 2px solid var(--ink); background: #fff; border-radius: 6px; padding: 3px; cursor: pointer; min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
 .staal.sel { outline: 3px solid var(--accent); outline-offset: 1px; background: #fff3d6; }
@@ -113,7 +113,7 @@ a { color: var(--info); }
 .mr-tekst b { display: block; }
 .mr-tekst small { color: var(--zacht); }
 .macht-chip { --k: #888; border: 2px solid var(--ink); background: var(--k); color: #fff; font-weight: 700; padding: 1px 8px; border-radius: 20px; font-size: .8em; text-shadow: 1px 1px 0 rgba(0,0,0,.35); }
-.route-badge { border: 2px solid var(--ink); border-radius: 4px; padding: 1px 6px; font-size: .78em; font-weight: 700; background: #eee; }
+.route-badge { display: inline-block; width: fit-content; border: 2px solid var(--ink); border-radius: 4px; padding: 1px 6px; font-size: .78em; font-weight: 700; background: #eee; }
 .route-badge.r-taalsleutels { background: #f8d9a8; }
 .route-badge.r-kompas { background: #bfe3cf; }
 .route-badge.r-telescoop { background: #c8d8f4; }
@@ -295,3 +295,13 @@ a { color: var(--info); }
   .overlay { padding: 6px; }
 }
 @media (prefers-reduced-motion: reduce) { .raid-banner { animation: none; } .balk > span { transition: none; } }
+
+/* ---------- avatarmaker met tabbladen ---------- */
+.creator-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 6px; }
+.creator-tabs .tab { border: 2px solid var(--ink); background: #fff; border-radius: 8px 8px 0 0; padding: 6px 14px; font-weight: 700; cursor: pointer; }
+.creator-tabs .tab.sel { background: var(--accent); color: #fff; }
+.creator-vakken { border: 2px solid var(--ink); border-radius: 0 8px 8px 8px; padding: 10px; background: #fffdf7; max-height: 46vh; overflow: auto; }
+.staal-beeld { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.staal-beeld small { font-size: .72em; }
+.staal-beeld img { width: 42px; height: 42px; }
+.creator-links .knoppen { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }

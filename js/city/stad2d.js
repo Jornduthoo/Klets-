@@ -1,7 +1,8 @@
 // Terugvalkaart zonder WebGL: dezelfde stad, isometrisch getekend op een 2D-canvas.
 // Zelfde methodes als Stad3D (update, setOverlay, markers, focus ...), zodat de app niets merkt.
 import { clamp, lerp, rng } from '../core/util.js';
-import { PLEIN_R, DAL_R, SPOOR_HALF, SPOOR_SPOREN, WEG_HALF, RIJBAAN, WIJKEN, KLEUR, PLEIN, POORT, kavels, hqPositie, gidsPlek, polar, stadStraal, isVrijVoorBoom } from './layout.js';
+import { PLEIN_R, DAL_R, SPOOR_HALF, SPOOR_SPOREN, WEG_HALF, RIJBAAN, WIJKEN, KLEUR, PLEIN, POORT, PLEKKEN, MOLENS, WATERS, KADE, bruggen, kavels, hqPositie, gidsPlek, polar, stadStraal, isVrijVoorBoom } from './layout.js';
+import { sterktes } from './weer.js';
 import { wegennet, takLijn, KRUIS } from './wegen.js';
 import { AVATAR_OPTIES, dakKleur } from '../figuren/uiterlijk.js';
 
@@ -18,13 +19,14 @@ export class Stad2D {
   constructor(container, opts = {}) {
     this.c = container; this.o = opts; this.is2D = true;
     this.cv = document.createElement('canvas'); this.cv.className = 'stad-canvas2d'; this.cv.tabIndex = 0;
-    this.cv.setAttribute('aria-label', 'De stad Klets (eenvoudige kaart). Sleep om te schuiven, scroll om te zoomen.');
+    this.cv.setAttribute('aria-label', 'De themastad (eenvoudige kaart). Sleep om te schuiven, scroll om te zoomen.');
     container.append(this.cv);
     this.markerLaag = document.createElement('div'); this.markerLaag.className = 'stad-markers'; container.append(this.markerLaag);
     this.g = this.cv.getContext('2d');
     this.cam = { x: 0, z: 6, zoom: 9, yaw: 0.62 }; this.doel = { ...this.cam };
     this.model = null; this.overlay = null; this.markers = new Map(); this.storm = 0; this.nacht = 0; this.tijdMode = 'cyclus'; this.t = 0;
     this.hits = []; this.pauze = false; this.kwaliteit = 'laag';
+    this.weer = null; this.seizoen = 'lente'; this.bruggen = bruggen();
     this._invoer();
     this._ro = new ResizeObserver(() => this._resize()); this._ro.observe(container); this._resize();
     this._last = performance.now();
@@ -57,6 +59,9 @@ export class Stad2D {
   setTijd(m) { this.tijdMode = m || 'cyclus'; }
   setStorm(n) { this.stormDoel = clamp(n, 0, 1); }
   setKwaliteit() {}
+  /** Het echte weer van Brugge: de lucht, de regen en het seizoen van de kaart. */
+  setWeer(w) { this.weer = w; this.sterk = sterktes(w || {}); if (w?.seizoen) this.zetSeizoen(w.seizoen); }
+  zetSeizoen(seizoen) { this.seizoen = seizoen || 'lente'; }
   pause(on) { this.pauze = !!on; }
   draai(r) { this.doel.yaw += r * Math.PI / 4; }
   zoom(r) { this.doel.zoom = clamp(this.doel.zoom * (r > 0 ? 1 / 1.3 : 1.3), 4, 40); }
@@ -67,6 +72,8 @@ export class Stad2D {
   positieVan(id) {
     if (!id) return null;
     if (id.startsWith('gids:')) { const w = WIJKEN.find(x => x.gids === id.slice(5)); if (!w) return null; const p = hqPositie(w); return { x: p.x, y: 3, z: p.z }; }
+    if (id.startsWith('plek:')) { const pl = PLEKKEN[id.slice(5)]; return pl ? { x: pl.x, y: 2.4, z: pl.z } : null; }
+    if (id.startsWith('water:')) { const wz = WATERS.find(x => x.zone === id.slice(6)); return wz ? { x: wz.x, y: 0.4, z: wz.z ?? (wz.z0 + wz.z1) / 2 } : null; }
     if (id === 'station') return { x: 0, y: 3, z: -2 };
     if (PLEIN[id]) return { x: PLEIN[id].x, y: 2, z: PLEIN[id].z };
     if (id === 'poort') return { x: POORT.x, y: 6, z: POORT.z };
@@ -147,12 +154,26 @@ export class Stad2D {
     const g = this.g, w = this.w, h = this.h, n = this.nacht;
     this.hits = [];
     const lucht = g.createLinearGradient(0, 0, 0, h);
-    lucht.addColorStop(0, n > 0.4 ? '#0f1640' : '#5aa9f0'); lucht.addColorStop(1, n > 0.4 ? '#2a3466' : '#d6ecfb');
+    const grijs = this.sterk?.wolken ?? 0.3;
+    lucht.addColorStop(0, n > 0.4 ? '#0f1640' : mengHex('#5aa9f0', '#8c93a4', grijs));
+    lucht.addColorStop(1, n > 0.4 ? '#2a3466' : mengHex('#d6ecfb', '#c2c6cf', grijs));
     g.fillStyle = lucht; g.fillRect(0, 0, w, h);
     this._ellips(DAL_R + 8, n > 0.4 ? '#3c5a3a' : '#8fae6a');
     this._ellips(DAL_R, n > 0.4 ? '#3f6b3a' : '#86c95a');
     this._ellips(PLEIN_R, '#efe6d6');
     const vlak = (pts, kleur) => { g.fillStyle = kleur; g.beginPath(); pts.forEach((q, i) => { const s2 = this.p(q.x, 0, q.z); i ? g.lineTo(s2.x, s2.y) : g.moveTo(s2.x, s2.y); }); g.closePath(); g.fill(); };
+    // de reien, het Minnewater en de haven: hoe helderder de klas het water maakte, hoe blauwer
+    const stand = this.model?.water;
+    const vorm = (w, marge, kleur) => {
+      if (w.soort === 'strook') vlak([{ x: w.x - w.halfB - marge, z: Math.min(w.z0, w.z1) - marge }, { x: w.x + w.halfB + marge, z: Math.min(w.z0, w.z1) - marge },
+        { x: w.x + w.halfB + marge, z: Math.max(w.z0, w.z1) + marge }, { x: w.x - w.halfB - marge, z: Math.max(w.z0, w.z1) + marge }], kleur);
+      else { const pts = []; for (let i = 0; i < 48; i++) { const a = i / 48 * TAU; pts.push({ x: w.x + Math.cos(a) * (w.rx + marge), z: w.z + Math.sin(a) * (w.rz + marge) }); } vlak(pts, kleur); }
+    };
+    for (const w of WATERS) vorm(w, KADE, '#bdb49f');
+    for (const w of WATERS) {
+      const hel = stand?.zones?.[w.zone]?.helder ?? 0;
+      vorm(w, 0, mengHex('#6b6440', '#2f8fd6', hel));
+    }
     // spoorbedding
     vlak([{ x: -DAL_R, z: -SPOOR_HALF + 0.6 }, { x: DAL_R, z: -SPOOR_HALF + 0.6 }, { x: DAL_R, z: SPOOR_HALF - 0.6 }, { x: -DAL_R, z: SPOOR_HALF - 0.6 }], '#a9a196');
     // wegennet: eerst stoepen, dan asfalt, dan kruispunten (zelfde graaf als de 3D-stad)
@@ -190,6 +211,12 @@ export class Stad2D {
     obj.push({ x: PLEIN.kluis.x, z: PLEIN.kluis.z, f: () => this._blok(PLEIN.kluis.x, PLEIN.kluis.z, 1.6, 1.3, 1.6, 0, '#dfe3ea', '#8d6ad6', 'kluis') });
     obj.push({ x: PLEIN.missiebord.x, z: PLEIN.missiebord.z, f: () => this._blok(PLEIN.missiebord.x, PLEIN.missiebord.z, 2.2, 0.3, 1.9, 0, '#a8743f', '#e9a23b', 'missiebord') });
     obj.push({ x: POORT.x, z: POORT.z, f: () => this._blok(POORT.x, POORT.z, 3, 6, 7, 0, '#c9c2b8', '#e9a23b', 'poort') });
+    for (const [id, pl] of Object.entries(PLEKKEN)) {
+      const hoog = id === 'belfort' ? 8.4 : id === 'olvkerk' ? 7.6 : id === 'vuurtoren' ? 6.2 : 3.2;
+      obj.push({ x: pl.x, z: pl.z, f: () => this._blok(pl.x, pl.z, pl.w, pl.d, hoog, -pl.rot, '#efe3cc', '#b4543a', 'plek:' + id) });
+    }
+    for (const mo of MOLENS) obj.push({ x: mo.x, z: mo.z, f: () => this._blok(mo.x, mo.z, 1.6, 1.6, 4.2, -mo.rot, '#8a6a44', '#5d4a33') });
+    for (const br of this.bruggen) obj.push({ x: br.x, z: br.z, f: () => this._blok(br.x, br.z, br.breedte, 2.2, 0.5, 0, '#d9cdb6', '#e8ddc6') });
     for (const wk of WIJKEN) {
       const p = hqPositie(wk); obj.push({ x: p.x, z: p.z, f: () => this._blok(p.x, p.z, 3, 3.6, 2.6, -p.rot, '#f6eedd', KLEUR[wk.macht], 'gids:' + wk.gids) });
       const gp = gidsPlek(wk); obj.push({ x: gp.x, z: gp.z, f: () => { const q = this.p(gp.x, 0.9, gp.z), r0 = Math.max(3, this.cam.zoom * 0.42); g.fillStyle = KLEUR[wk.macht]; g.beginPath(); g.ellipse(q.x, q.y + r0 * 1.4, r0 * 0.8, r0 * 1.1, 0, 0, TAU); g.fill(); g.fillStyle = '#fbe3cf'; g.beginPath(); g.arc(q.x, q.y, r0, 0, TAU); g.fill(); g.fillStyle = '#2a2230'; g.fillRect(q.x - r0 * 0.4, q.y - r0 * 0.1, 2, 2); g.fillRect(q.x + r0 * 0.3, q.y - r0 * 0.1, 2, 2); } });
@@ -204,7 +231,7 @@ export class Stad2D {
       for (const hh of m.huizen) { const s = hh.slot; obj.push({ x: s.x, z: s.z, f: () => this._blok(s.x, s.z, 1.2, 1.0, 1.0, -s.rot, '#f6eedd', dakKleur(AVATAR_OPTIES.kleren[hh.look?.kleren ?? 3] || '#4c8fd6'), hh.id) }); }
       const r = rng('2dbomen');
       const sr = net.stadR;
-      for (let i = 0; i < 160; i++) { const p = polar(sr + 2.5 + r() * Math.max(1, DAL_R - sr - 3), r() * TAU); if (!isVrijVoorBoom(p.x, p.z)) continue; obj.push({ x: p.x, z: p.z, f: () => { const q = this.p(p.x, 0.8, p.z); g.fillStyle = '#4fa548'; g.beginPath(); g.arc(q.x, q.y, 0.55 * this.cam.zoom, 0, TAU); g.fill(); } }); }
+      for (let i = 0; i < 160; i++) { const p = polar(sr + 2.5 + r() * Math.max(1, DAL_R - sr - 3), r() * TAU); if (!isVrijVoorBoom(p.x, p.z)) continue; obj.push({ x: p.x, z: p.z, f: () => { const q = this.p(p.x, 0.8, p.z); g.fillStyle = BLADKLEUR[this.seizoen] || '#4fa548'; g.beginPath(); g.arc(q.x, q.y, 0.55 * this.cam.zoom * (this.seizoen === 'winter' ? 0.6 : 1), 0, TAU); g.fill(); } }); }
     }
     for (const o of obj) o.d = this.p(o.x, 0, o.z).d;
     obj.sort((a, b) => a.d - b.d).forEach(o => o.f());
@@ -222,7 +249,28 @@ export class Stad2D {
       for (let i = 0; i < 9; i++) { const a = i / 9 * TAU + this.t * 0.3; g.beginPath(); g.arc(c.x + Math.cos(a) * 60 * this.storm, c.y + Math.sin(a) * 20, 36 * this.storm, 0, TAU); g.fill(); }
       g.fillStyle = '#ffe680'; g.fillRect(c.x - 20, c.y - 6, 8, 8); g.fillRect(c.x + 12, c.y - 6, 8, 8);
     }
+    // regen, sneeuw en mist van het echte weer
+    const sk = this.sterk;
+    if (sk?.regen > 0.02) {
+      g.strokeStyle = `rgba(190,214,236,${0.25 + sk.regen * 0.4})`; g.lineWidth = 1;
+      const aantal = Math.round(60 + sk.regen * 160);
+      for (let i = 0; i < aantal; i++) { const x = (i * 97 + this.t * 220) % w, y = (i * 53 + this.t * 900) % h; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 3, y + 12); g.stroke(); }
+    }
+    if (sk?.sneeuw > 0.02) {
+      g.fillStyle = `rgba(255,255,255,${0.5 + sk.sneeuw * 0.4})`;
+      const aantal = Math.round(50 + sk.sneeuw * 120);
+      for (let i = 0; i < aantal; i++) { const x = (i * 73 + Math.sin(this.t + i) * 20 + this.t * 20) % w, y = (i * 41 + this.t * 120) % h; g.beginPath(); g.arc(x, y, 1.6, 0, TAU); g.fill(); }
+    }
+    if (sk?.mist > 0.05) { g.fillStyle = `rgba(226,228,236,${sk.mist * 0.45})`; g.fillRect(0, 0, w, h); }
     if (n > 0.05) { g.fillStyle = `rgba(10,16,50,${n * 0.45})`; g.fillRect(0, 0, w, h); }
   }
 }
 void kavels;
+
+const BLADKLEUR = { winter: '#6f7a62', lente: '#8fd06a', zomer: '#3f9c43', herfst: '#c98a3e' };
+/** Twee hexkleuren mengen (0 = a, 1 = b). */
+function mengHex(a, b, t = 0) {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const k = clamp(t, 0, 1), c = (sh) => Math.round(((pa >> sh) & 255) * (1 - k) + ((pb >> sh) & 255) * k);
+  return `rgb(${c(16)},${c(8)},${c(0)})`;
+}

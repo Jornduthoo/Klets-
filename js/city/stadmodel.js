@@ -1,6 +1,8 @@
 // Van klasgegevens naar een stad: welke gebouwen staan er, hoe groot, waar, en hoe ver is de mist weg.
 // Puur rekenwerk, geen tekenen. Wordt gedeeld door de leerlingenapp, het digibord en de 2D-terugvalkaart.
-import { doelStats, doelStatus, machtVanCode, klasXP, mistDichtheid } from '../core/model.js';
+import { doelStats, doelStatus, machtVanCode, klasXP } from '../core/model.js';
+import { waterStand } from './water.js';
+import { themaVoor } from '../../data/themas.js';
 import { WIJKEN, WIJK, kavels, huisKavels, hqPositie, stadStraal, MIST_MIN, MIST_MAX } from './layout.js';
 
 /** Niveau 0..3 van een gebouw: hoe meer reizigers het doel haalden, hoe groter. */
@@ -39,7 +41,8 @@ export const HUISDECOR = {
  * Bouw het stadsmodel.
  * in: { pupils, attempts, settings, doelen, meId, catalog }
  */
-export function stadModel({ pupils = [], attempts = [], settings = {}, doelen = {}, meId = null, goalMissies = {} }) {
+export function stadModel({ pupils = [], attempts = [], settings = {}, doelen = {}, meId = null, goalMissies = {}, events = [], thema = null }) {
+  const th = thema || themaVoor(settings);
   const leerlingen = pupils.filter(p => !p.leerkracht);
   const n = Math.max(1, leerlingen.length);
   const echte = attempts.filter(a => a.bron !== 'voorbeeld');
@@ -94,14 +97,21 @@ export function stadModel({ pupils = [], attempts = [], settings = {}, doelen = 
   }));
 
   const xp = klasXP(leerlingen);
-  const mist = mistDichtheid(settings, leerlingen);
-  let verst = 0;
-  for (const g of gebouwen) verst = Math.max(verst, g.slot ? g.slot.r : 0);
-  const mistRadius = Math.max(MIST_MIN + (MIST_MAX - MIST_MIN) * (1 - mist), verst + 3.2);
+  // de Grijze Mist is weg: aan de rand van het dal blijft enkel nevel staan
+  const mistRadius = MIST_MAX;
+  // de waterstand van het thema: elk gehaald labo maakt een zone helder
+  const water = waterStand({ thema: th, attempts: echte, pupils, events });
+  const gebouwenThema = Object.entries(th?.gebouwen || {}).map(([id, g]) => ({
+    id: 'plek:' + g.plek, gebouwId: id, naam: g.naam, kort: g.kort, plek: g.plek, gids: g.gids, week: g.week,
+    labos: g.labos || [], interieur: g.interieur, uitleg: g.uitleg,
+    klaar: (g.labos || []).every(l => water.labos[l]?.klaar),
+  }));
   return {
-    gebouwen, wijken, huizen, xp, mist, mistRadius, stadR: stadStraal(gebouwen),
+    gebouwen, wijken, huizen, xp, mist: 1 - water.helder, mistRadius, stadR: stadStraal(gebouwen),
     doelXp: n * (settings.mistDoel || 1200), bevolking: leerlingen.length,
     aantalGebouwd: gebouwen.filter(g => g.gebouwd).length,
+    water, themaGebouwen: gebouwenThema, thema: { id: th?.id, naam: th?.naam, stad: th?.stad, kleur: th?.kleur },
+    week: settings.huidigeWeek || 1,
   };
 }
 

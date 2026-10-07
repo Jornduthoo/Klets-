@@ -1,4 +1,4 @@
-// Het wegennet van Klets als graaf: kruispunten (knopen) en wegvakken (takken), plus de overwegen met het spoor.
+// Het wegennet van de stad als graaf: kruispunten (knopen) en wegvakken (takken), plus de overwegen met het spoor.
 // Gedeeld door de 3D-stad, de 2D-terugvalkaart, het verkeer en de lay-outcontrole (valideerStad).
 //
 // - Ringen liggen er enkel tot de straal waarop de stad gegroeid is (stadR); lanen lopen van ring 0 tot die ring.
@@ -8,6 +8,7 @@
 import {
   RINGEN, LAAN_HOEKEN, WEG_HALF, RIJBAAN, RIJSTROOK, SPOOR_Z, SPOOR_HALF, SPOOR_X, polar, hoeken, straalBereik,
   afstandSegmentPoly, raaktSpoor, kavels, huisKavels, hqPositie, WIJKEN, KAVEL, HUIS, veelhoekenOverlappen, PLEIN_R,
+  WATERS, inWater, raaktWater, bruggen, PLEKKEN, KADE,
 } from './layout.js';
 
 const TAU = Math.PI * 2;
@@ -141,7 +142,27 @@ export function valideerStad(opts = {}) {
     if (Math.abs(Math.hypot(a.s.x, a.s.z) - Math.hypot(b.s.x, b.s.z)) > 6) continue;
     if (veelhoekenOverlappen(a.poly, b.poly)) fouten.push(`${a.naam} overlapt ${b.naam}`);
   }
-  return { ok: fouten.length === 0, fouten, aantal: { kavels: alle.length, takken: net.takken.length, overwegen: net.overwegen.length } };
+  // 4. water: elke plaats waar een weg het water kruist heeft een brug, en geen kavel ligt in het water
+  const brug = bruggen();
+  for (const t of net.takken) {
+    const pts = takLijn(t, 0.4);
+    for (let i = 1; i < pts.length; i++) {
+      const m = { x: (pts[i - 1].x + pts[i].x) / 2, z: (pts[i - 1].z + pts[i].z) / 2 };
+      if (!inWater(m.x, m.z)) continue;
+      if (!brug.some(b => Math.hypot(b.x - m.x, b.z - m.z) < b.breedte / 2 + 0.6)) fouten.push(`weg ${t.id} kruist het water zonder brug bij (${m.x.toFixed(1)}, ${m.z.toFixed(1)})`);
+    }
+  }
+  for (const k of alle) if (raaktWater(k.poly, KADE)) fouten.push(`${k.naam} ligt in het water`);
+  // 5. themagebouwen: op het droge (de Scheepswerf, het Waterlabo en de Sluis staan op de kade) en niet op een weg
+  for (const [id, p] of Object.entries(PLEKKEN)) {
+    const poly = hoeken(p);
+    if (raaktWater(poly, 0)) fouten.push(`plek ${id} staat in het water`);
+    if (raaktWegNet(poly)) fouten.push(`plek ${id} staat op een weg`);
+    if (raaktSpoor(poly, 0.05) && Math.abs(p.z) > 2) fouten.push(`plek ${id} staat op het spoor`);
+  }
+  for (const w of WATERS) if (!w.zone) fouten.push(`water ${w.id} hoort bij geen zone`);
+
+  return { ok: fouten.length === 0, fouten, aantal: { kavels: alle.length, takken: net.takken.length, overwegen: net.overwegen.length, bruggen: brug.length, waters: WATERS.length } };
 }
 
 /** Lengte van het spoor tussen de tunnels (voor het tekenen). */

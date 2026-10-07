@@ -6,6 +6,7 @@ import { rng, clamp } from '../core/util.js';
 import { RINGEN, RIJBAAN, STOEP, WEG_HALF, RIJSTROOK, SPOOR_HALF, SPOOR_SPOREN, SPOOR_X, LAAN_HOEKEN, polar, hoekVerschil } from './layout.js';
 import { wegennet, takPunt, rijPunt, takLijn, KRUIS } from './wegen.js';
 import { Bouwer, autoGeo, lampGeo } from './modellen.js';
+import { koetsGeo, fietsGeo } from './brugge.js';
 
 const TAU = Math.PI * 2;
 const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), Q2 = new THREE.Quaternion(), V3 = new THREE.Vector3(), S3 = new THREE.Vector3(), K = new THREE.Color();
@@ -291,10 +292,15 @@ export class Wegen3D {
   // ---------- verkeer ----------
   _bouwAutos() {
     const n = this.stad.kwaliteit === 'hoog' ? 80 : 46;
-    this.autos = new THREE.InstancedMesh(autoGeo(), new THREE.MeshLambertMaterial({ vertexColors: true }), n);
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    this.autos = new THREE.InstancedMesh(autoGeo(), mat, n);
     this.autos.castShadow = true; this.autos.count = 0; this.scene.add(this.autos);
     const kl = ['#e2643e', '#3d8fe0', '#f6c445', '#ffffff', '#38b37a', '#e9578a', '#2d3240', '#9a68e0', '#f0a531', '#c7ced8'];
     for (let i = 0; i < n; i++) this.autos.setColorAt(i, K.set(kl[i % kl.length]));
+    // Brugse paardenkoetsen en fietsers rijden tussen de auto's
+    this.koetsen = new THREE.InstancedMesh(koetsGeo().body, mat, Math.max(4, Math.round(n / 8)));
+    this.fietsen = new THREE.InstancedMesh(fietsGeo().body, mat, Math.max(6, Math.round(n / 4)));
+    for (const m of [this.koetsen, this.fietsen]) { m.castShadow = true; m.count = 0; this.scene.add(m); }
     this.autoData = [];
     this.rr = rng('verkeer');
   }
@@ -311,7 +317,10 @@ export class Wegen3D {
       const L = t.lengte - 2 * KRUIS; if (L < 1) continue;
       const p = KRUIS + rr() * L;
       if (this.autoData.some(a => a.tak === t && a.dir === dir && Math.abs(a.p - p) < 1.3)) continue;
-      this.autoData.push({ tak: t, dir, p, v: 1.9 + rr() * 0.5, bocht: null });
+      const w = rr();
+      const soort = w < 0.1 ? 'koets' : w < 0.3 ? 'fiets' : 'auto';
+      const v = soort === 'koets' ? 1.1 + rr() * 0.2 : soort === 'fiets' ? 1.4 + rr() * 0.4 : 1.9 + rr() * 0.5;
+      this.autoData.push({ tak: t, dir, p, v, soort, bocht: null });
     }
     this.autos.count = this.autoData.length;
   }
@@ -361,8 +370,8 @@ export class Wegen3D {
         if (a.p >= L - KRUIS - 1e-3 && i === 0) this._volgende(a);
       });
     }
-    // auto's in een bocht
-    let i = 0;
+    // auto's, koetsen en fietsers in een bocht
+    let i = 0, nk = 0, nf = 0;
     for (const a of this.autoData) {
       let x, z, hx, hz;
       if (a.bocht) {
@@ -384,12 +393,16 @@ export class Wegen3D {
         const p = rijPunt(a.tak, s, a.dir, RIJSTROOK);
         x = p.x; z = p.z; hx = p.dx; hz = p.dz;
       }
-      // autoGeo: voorkant = +z
+      // autoGeo, koetsGeo en fietsGeo: voorkant = +z
       M4.compose(V3.set(x, Y_WEG, z), Q.setFromAxisAngle(YAS, Math.atan2(hx, hz)), S3.set(1, 1, 1));
-      this.autos.setMatrixAt(i++, M4);
+      if (a.soort === 'koets' && nk < this.koetsen.instanceMatrix.count) this.koetsen.setMatrixAt(nk++, M4);
+      else if (a.soort === 'fiets' && nf < this.fietsen.instanceMatrix.count) this.fietsen.setMatrixAt(nf++, M4);
+      else this.autos.setMatrixAt(i++, M4);
     }
-    this.autos.count = i;
+    this.autos.count = i; this.koetsen.count = nk; this.fietsen.count = nf;
     this.autos.instanceMatrix.needsUpdate = true;
+    this.koetsen.instanceMatrix.needsUpdate = true;
+    this.fietsen.instanceMatrix.needsUpdate = true;
   }
 
   setData(aan) {

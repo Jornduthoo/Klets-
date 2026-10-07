@@ -1,4 +1,7 @@
-// Centrale instellingen en vaste gegevens van Klets!
+// Centrale instellingen en vaste gegevens van Vagant (methode wereldoriëntatie).
+// Vaganten waren middeleeuwse rondtrekkende studenten die van stad naar stad trokken om te leren.
+
+export const METHODE = 'Vagant';
 
 /** Welke opslag en welke live-verbinding gebruikt de app?
  *  'local'    = localStorage + BroadcastChannel (werkt meteen, per toestel)
@@ -15,30 +18,31 @@ export const BACKEND = {
 
 export const DEFAULT_PIN = '1234';
 
-export const MACHTEN = [
-  { id: 'Taal', naam: 'Taal', kleur: '#e9a23b', gids: 'woordje', uitleg: 'Lezen, schrijven, spreken en luisteren' },
-  { id: 'Getal', naam: 'Getal', kleur: '#e2643e', gids: 'tella', uitleg: 'Rekenen, meten en getallen' },
-  { id: 'Wereld', naam: 'Wereld', kleur: '#3fa37a', gids: 'atlas', uitleg: 'Mens, maatschappij, natuur en kaart' },
-  { id: 'Hart', naam: 'Hart', kleur: '#d9577b', gids: 'bram', uitleg: 'Gevoelens, samenleven en vrede' },
-  { id: 'Maker', naam: 'Maker', kleur: '#4c8fd6', gids: 'byte', uitleg: 'ICT, muziek en beeld' },
-  { id: 'Brein', naam: 'Brein', kleur: '#9a6ad6', gids: 'kroniek', uitleg: 'Leren leren en terugblikken' },
+/** De zes domeinen van WERO. Elk domein heeft een wijk in de stad en een gids. (Intern heet een domein nog 'macht'.) */
+export const DOMEINEN = [
+  { id: 'Aardrijkskunde', naam: 'Aardrijkskunde', kort: 'AK', kleur: '#3fa37a', gids: 'atlas', uitleg: 'Kaarten, weer, water en landschappen' },
+  { id: 'Geschiedenis', naam: 'Geschiedenis', kort: 'GE', kleur: '#c4873a', gids: 'kroniek', uitleg: 'Tijd, bronnen en verhalen van vroeger' },
+  { id: 'Wetenschap', naam: 'Wetenschap', kort: 'WE', kleur: '#e2643e', gids: 'tella', uitleg: 'Onderzoeken: natuur, stoffen en krachten' },
+  { id: 'Techniek', naam: 'Techniek en ICT', kort: 'TE', kleur: '#4c8fd6', gids: 'byte', uitleg: 'Ontwerpen, bouwen en programmeren' },
+  { id: 'Hart', naam: 'Hart', kort: 'SE', kleur: '#d9577b', gids: 'bram', uitleg: 'Gevoelens, samenwerken en samenleven' },
+  { id: 'Onderzoek', naam: 'Onderzoek', kort: 'OZ', kleur: '#9a6ad6', gids: 'woordje', uitleg: 'Vragen stellen, voorspellen en eerlijk testen' },
 ];
+export const MACHTEN = DOMEINEN;
 export const MACHT = Object.fromEntries(MACHTEN.map(m => [m.id, m]));
 
 export const ROUTES = [
-  { id: 'taalsleutels', naam: 'Taalsleutels', kort: 'TS', uitleg: 'Startspoor met veel beeld en voorlezen' },
-  { id: 'kompas', naam: 'Kompas', kort: 'K', uitleg: 'Doelen van het 4de leerjaar' },
-  { id: 'telescoop', naam: 'Telescoop', kort: 'T', uitleg: 'Doelen van het 6de leerjaar' },
+  { id: 'kompas', naam: 'Kompas', kort: 'K', uitleg: 'Doelen van het 4de leerjaar, met voorleesknop en stap voor stap' },
+  { id: 'telescoop', naam: 'Telescoop', kort: 'T', uitleg: 'Doelen van het 6de leerjaar, met eigen onderzoek en rekenwerk' },
 ];
 export const ROUTE = Object.fromEntries(ROUTES.map(r => [r.id, r]));
 
 export const GIDSEN = {
-  atlas: { naam: 'Atlas', dier: 'schildpad', rol: 'kaartenmaker', macht: 'Wereld', plek: 'Kaartenkamer' },
-  woordje: { naam: 'Woordje', dier: 'papegaai', rol: 'taal', macht: 'Taal', plek: 'Wachtzaal' },
-  tella: { naam: 'Tella', dier: 'vos', rol: 'rekenen', macht: 'Getal', plek: 'Rekenkiosk' },
-  kroniek: { naam: 'Kroniek', dier: 'uil', rol: 'verleden', macht: 'Brein', plek: 'Seinhuis' },
-  bram: { naam: 'Bram', dier: 'beer', rol: 'gevoelens', macht: 'Hart', plek: 'Kampvuur' },
-  byte: { naam: 'Byte', dier: 'robot', rol: 'ICT', macht: 'Maker', plek: 'Werkplaats' },
+  atlas: { naam: 'Atlas', dier: 'schildpad', rol: 'ontdekkingsreiziger en duiker', macht: 'Aardrijkskunde', plek: 'Kaartenkamer', uitrusting: 'duikbril en kaartkoker' },
+  kroniek: { naam: 'Kroniek', dier: 'uil', rol: 'nachtelijke tijdreiziger', macht: 'Geschiedenis', plek: 'Archief', uitrusting: 'lantaarn en reismantel' },
+  tella: { naam: 'Tella', dier: 'vos', rol: 'labo-onderzoeker', macht: 'Wetenschap', plek: 'Proefkeuken', uitrusting: 'labojas en veiligheidsbril' },
+  byte: { naam: 'Byte', dier: 'robot', rol: 'uitvinder', macht: 'Techniek', plek: 'Werkplaats', uitrusting: 'gereedschapsriem en jetpack' },
+  bram: { naam: 'Bram', dier: 'beer', rol: 'kampleider', macht: 'Hart', plek: 'Kampvuur', uitrusting: 'rugzak en kampeerpot' },
+  woordje: { naam: 'Woordje', dier: 'papegaai', rol: 'verkenner en verteller', macht: 'Onderzoek', plek: 'Uitkijkpost', uitrusting: 'touw en klimgerei' },
 };
 
 export const RANGEN = [
@@ -47,7 +51,7 @@ export const RANGEN = [
   { naam: 'Spoorzoeker', xp: 1500 },
   { naam: 'Kaartmaker', xp: 3000 },
   { naam: 'Gids', xp: 5000 },
-  { naam: 'Wereldwijze', xp: 8000 },
+  { naam: 'Vagant', xp: 8000 },
 ];
 
 export const XP = { perJuist: 10, eersteKeerBonus: 20, code: 25, raidJuist: 10, raidOverwinning: 50 };

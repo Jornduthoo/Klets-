@@ -1,12 +1,22 @@
-// De 3D-stad Klets (three.js, WebGL). Een levende low-poly stad in een dal tussen de bergen:
-// wijken per macht, gebouwen die groeien met de klas, de Grijze Mist aan de rand, auto's, een trein,
-// wolken, dag en nacht, kaartlagen en een tilt-shift-look. Gemaakt om vlot te draaien op gewone schoollaptops.
+// De 3D-stad van Vagant (three.js, WebGL). Een levende low-poly stad aan het water: in thema 1 is dat
+// Zwinvliet, een Venetie van het Noorden met reien, bruggen, kaaien, het Minnewater, de haven met de sluis
+// van Zeebrugge en het Belfort op de Markt. Wijken per domein, gebouwen die groeien met de klas, verkeer
+// (auto's, koetsen, fietsers, een tram en een trein), het echte weer en seizoen van Brugge, dag en nacht,
+// kaartlagen en een tilt-shift-look. Gemaakt om vlot te draaien op gewone schoollaptops.
 import * as THREE from '../../vendor/three.module.min.js';
 import { rng, clamp, lerp } from '../core/util.js';
 import {
   RINGEN, PLEIN_R, DAL_R, BERG_R, SPOOR_HALF, SPOOR_SPOREN, SPOOR_X, LAAN_HOEKEN, WEG_HALF, VOORTUIN, MIST_MAX, POORT, TUNNEL_WEST,
   WIJKEN, KLEUR, PLEIN, kavels, huisKavels, polar, isVrijVoorBoom, hqPositie, stadStraal, lokaalNaarWereld,
+  WATERS, PLEKKEN, MOLENS, inWater, KADE, hoeken,
 } from './layout.js';
+import { Water3D, Waterval, Fontein, WATER_Y } from './water3d.js';
+import { Weer3D, Blaadjes, SEIZOEN_BLAD, SEIZOEN_BLADVOL } from './weer3d.js';
+import {
+  belfortGebouw, windvaanGeo, weerbordGeo, provinciaalhofGebouw, olvkerkGebouw, molenGebouw, wiekenGeo,
+  scheepswerfGebouw, waterlaboGebouw, sluisGebouw, sluisdeurGeo, vuurtorenGebouw, fonteinGebouw,
+  trapgevelHuis, bankGeo, bloembakGeo, vlagGeo, tramGeo,
+} from './brugge.js';
 import { Wegen3D } from './wegen3d.js';
 import {
   doelGebouw, hqGebouw, huisGebouw, stationGebouw, klasmeterGebouw, kluisGebouw, missiebordGebouw, poortGebouw, tunnelGebouw,
@@ -32,6 +42,9 @@ export function terreinHoogte(x, z) {
   if (r < BERG_R - 1) return 0;
   const n = Math.sin(a * 5 + 1.3) * 0.5 + Math.sin(a * 11 + r * 0.13) * 0.3 + Math.sin(a * 23 - r * 0.21) * 0.2 + Math.sin(a * 3 - 0.7) * 0.4;
   let h = smooth(BERG_R - 1, BERG_R + 14, r) * (13 + n * 7) + smooth(BERG_R + 14, BERG_R + 60, r) * (16 + n * 10);
+  // de baai naar de Noordzee: in het noorden (negatieve z) wijken de bergen voor het strand en de zee
+  const baai = smooth(-42, -64, z) * (1 - smooth(24, 46, Math.abs(x)));
+  h = h * (1 - baai) - baai * 1.1;
   return h;
 }
 
@@ -142,7 +155,7 @@ export class Stad3D {
     R.toneMappingExposure = 1.05;
     R.domElement.className = 'stad-canvas3d';
     R.domElement.setAttribute('tabindex', '0');
-    R.domElement.setAttribute('aria-label', 'De stad Klets. Sleep om te schuiven, scroll om te zoomen, rechtermuisknop om te draaien.');
+    R.domElement.setAttribute('aria-label', 'De themastad. Sleep om te schuiven, scroll om te zoomen, rechtermuisknop om te draaien.');
     container.append(R.domElement);
     this.markerLaag = document.createElement('div'); this.markerLaag.className = 'stad-markers'; container.append(this.markerLaag);
 
@@ -161,7 +174,9 @@ export class Stad3D {
     this.wegNet = new Wegen3D(this);
     this._bouwPlein();
     this._bouwHQs();
+    this._bouwThema();
     this._bouwBomen();
+    this._bouwWater();
     this._bouwDynamisch();
     this._bouwVerkeer();
     this.figuren = new Figuren3D(this);
@@ -169,6 +184,7 @@ export class Stad3D {
     this._bouwWolken();
     this._bouwStorm();
     this._bouwPost();
+    this._bouwWeer();
     this._bedieningen();
 
     this._ro = new ResizeObserver(() => this._resize());
@@ -242,11 +258,10 @@ export class Stad3D {
         for (let k = r0; k < r1; k += 0.45) { g.beginPath(); g.arc(toPx(0), toPx(0), k * sc, a, a + da); g.stroke(); }
         g.restore();
       }
-      // vijver
-      const vp = polar(49, 250 * Math.PI / 180); this.vijver = vp;
-      g.fillStyle = '#e9dcb2'; g.beginPath(); g.ellipse(toPx(vp.x), toPx(vp.z), 5.0 * sc, 3.6 * sc, 0.4, 0, TAU); g.fill();
-      // plein
-      g.fillStyle = '#efe6d6'; g.beginPath(); g.arc(toPx(0), toPx(0), PLEIN_R * sc, 0, TAU); g.fill();
+      // het strand aan de baai in het noorden
+      g.fillStyle = '#efdcb4'; g.beginPath(); g.ellipse(toPx(0), toPx(-54), 34 * sc, 11 * sc, 0, 0, TAU); g.fill();
+      // de Markt
+      g.fillStyle = '#e8d9c0'; g.beginPath(); g.arc(toPx(0), toPx(0), PLEIN_R * sc, 0, TAU); g.fill();
       g.strokeStyle = '#e0d3bd'; g.lineWidth = sc * 0.2;
       for (let r = 1.5; r < PLEIN_R; r += 1.4) { g.beginPath(); g.arc(toPx(0), toPx(4.3), r * sc, 0, TAU); g.stroke(); }
       for (let i = 0; i < 24; i++) { const a = i / 24 * TAU; g.beginPath(); g.moveTo(toPx(Math.cos(a) * 1.8), toPx(4.3 + Math.sin(a) * 1.8)); g.lineTo(toPx(Math.cos(a) * PLEIN_R), toPx(4.3 + Math.sin(a) * PLEIN_R)); g.stroke(); }
@@ -255,14 +270,49 @@ export class Stad3D {
       for (let i = 0; i < 4000; i++) { g.fillStyle = rr() < .5 ? 'rgba(80,70,60,.25)' : 'rgba(255,255,255,.2)'; g.fillRect(rr() * S, toPx(-SPOOR_HALF + 0.6) + rr() * (SPOOR_HALF * 2 - 1.2) * sc, 2, 2); }
     });
     this.grondMat = new THREE.MeshLambertMaterial({ map: tex });
-    const grond = new THREE.Mesh(new THREE.CircleGeometry(RAD, 96), this.grondMat);
+    // de grond is een schijf met gaten: daar ligt het water (de reien, het Minnewater en de haven)
+    const vorm = new THREE.Shape();
+    vorm.absarc(0, 0, RAD, 0, TAU, false);
+    // Alle wateren liggen op de as x = 0 en kunnen elkaar overlappen. We snijden ze daarom als één profiel
+    // uit de grond: per z-waarde de breedste halve breedte. Zo komen er nooit overlappende gaten (die het
+    // uitsnijden zouden breken) en loopt de rei vloeiend over in het Minnewater en de haven.
+    const BINNEN = RAD - 0.8, STAP = 0.35;
+    const halveBreedte = (z) => {
+      let b = 0;
+      for (const w of WATERS) {
+        if (w.soort === 'strook') { if (z >= Math.min(w.z0, w.z1) && z <= Math.max(w.z0, w.z1)) b = Math.max(b, w.halfB); }
+        else { const d = (z - w.z) / w.rz; if (Math.abs(d) < 1) b = Math.max(b, w.rx * Math.sqrt(1 - d * d)); }
+      }
+      const ruimte = Math.sqrt(Math.max(0, BINNEN * BINNEN - z * z));
+      return Math.min(b, ruimte);
+    };
+    let reeks = [];
+    const sluitReeks = () => {
+      if (reeks.length >= 3) {
+        const gat = new THREE.Path();
+        reeks.forEach(([z, b], i) => { const x = -b, y = -z; i ? gat.lineTo(x, y) : gat.moveTo(x, y); });
+        for (let i = reeks.length - 1; i >= 0; i--) gat.lineTo(reeks[i][1], -reeks[i][0]);
+        gat.closePath();
+        vorm.holes.push(gat);
+      }
+      reeks = [];
+    };
+    for (let z = -BINNEN; z <= BINNEN; z += STAP) {
+      const b = halveBreedte(z);
+      if (b > 0.05) reeks.push([z, b]); else sluitReeks();
+    }
+    sluitReeks();
+    const gGrond = new THREE.ShapeGeometry(vorm, 64);
+    const gp = gGrond.attributes.position.array, guv = new Float32Array(gp.length / 3 * 2);
+    for (let i = 0; i < gp.length / 3; i++) { guv[i * 2] = gp[i * 3] / (2 * RAD) + 0.5; guv[i * 2 + 1] = 1 - (-gp[i * 3 + 1] / (2 * RAD) + 0.5); }
+    gGrond.setAttribute('uv', new THREE.BufferAttribute(guv, 2));
+    const grond = new THREE.Mesh(gGrond, this.grondMat);
     grond.rotation.x = -Math.PI / 2; grond.receiveShadow = true;
     this.scene.add(grond);
     this.grond = grond;
-    // vijver
-    const water = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshPhongMaterial({ color: '#4fb0e6', shininess: 90, specular: '#ffffff', transparent: true, opacity: 0.92 }));
-    water.rotation.x = -Math.PI / 2; water.rotation.z = -0.4; water.scale.set(4.4, 3.0, 1); water.position.set(this.vijver.x, 0.03, this.vijver.z);
-    water.receiveShadow = true; this.scene.add(water); this.water = water;
+    // onder de gaten en tot ver in de zee: de bodem
+    const bodem = new THREE.Mesh(new THREE.CircleGeometry(230, 48).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: '#6d6a52' }));
+    bodem.position.y = -0.82; this.scene.add(bodem);
     // schaduwvlekken onder gebouwen
     this.ctTex = schaduwTex();
   }
@@ -275,7 +325,14 @@ export class Stad3D {
       if (h > 6) return steil > 1.0 ? '#8f8b7f' : '#5f9e4c';
       return '#7dbb57';
     };
-    const pt = (i, j) => { const a = i / segA * TAU, t = j / segR, r = r0 + (r1 - r0) * Math.pow(t, 1.6); const x = Math.cos(a) * r, z = Math.sin(a) * r; return [x, terreinHoogte(x, z) - (j === 0 ? 0.08 : 0), z]; };
+    // waar water ligt (de haven, de Noordzee) zakt het terrein onder het wateroppervlak
+    const pt = (i, j) => {
+      const a = i / segA * TAU, t = j / segR, r = r0 + (r1 - r0) * Math.pow(t, 1.6);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      const nat = inWater(x, z, KADE);
+      const y = nat ? -0.95 : terreinHoogte(x, z) - (j === 0 ? 0.08 : 0);
+      return [x, y, z];
+    };
     for (let i = 0; i < segA; i++) for (let j = 0; j < segR; j++) {
       const p00 = pt(i, j), p10 = pt(i + 1, j), p01 = pt(i, j + 1), p11 = pt(i + 1, j + 1);
       for (const tri of [[p00, p01, p10], [p10, p01, p11]]) {
@@ -344,25 +401,142 @@ export class Stad3D {
   }
 
   _bouwPlein() {
-    const st = this._mesh(stationGebouw(), 'station');
-    st.position.set(PLEIN.station.x, 0, 0); this.scene.add(st);
-    const km = this._mesh(klasmeterGebouw(), 'klasmeter');
-    km.position.set(PLEIN.klasmeter.x, 0, PLEIN.klasmeter.z); this.scene.add(km);
-    // klasmeter-ring: hoogte = voortgang van de klas
+    // Het Belfort met de Hallen op de Markt: de toren is het weerstation van dit thema.
+    const bf = this._mesh(belfortGebouw(), 'plek:belfort');
+    bf.position.set(PLEKKEN.belfort.x, 0, PLEKKEN.belfort.z); bf.rotation.y = PLEKKEN.belfort.rot;
+    this.scene.add(bf);
+    this.belfort = bf;
+    // windvaan en weerscherm (volgen het echte weer van Brugge)
+    this.windvaan = new THREE.Mesh(windvaanGeo(), new THREE.MeshLambertMaterial({ vertexColors: true }));
+    this.windvaan.position.set(PLEKKEN.belfort.x, 8.35, PLEKKEN.belfort.z - 0.1);
+    this.scene.add(this.windvaan);
+    this.weerbord = new THREE.Mesh(weerbordGeo(), new THREE.MeshBasicMaterial({ vertexColors: true }));
+    this.weerbord.position.set(PLEKKEN.belfort.x + 1.1, 1.1, PLEKKEN.belfort.z + 1.32);
+    this.scene.add(this.weerbord);
+    // het gotische huis naast het Belfort
+    const ph = this._mesh(provinciaalhofGebouw(), 'plek:provinciaalhof');
+    ph.position.set(PLEKKEN.provinciaalhof.x, 0, PLEKKEN.provinciaalhof.z); ph.rotation.y = PLEKKEN.provinciaalhof.rot;
+    this.scene.add(ph);
+    // de Hallen aan de andere kant: de Werkplaats
+    const ha = this._mesh(trapgevelHuis('hallen', 1), 'plek:hallen');
+    ha.position.set(PLEKKEN.hallen.x, 0, PLEKKEN.hallen.z); ha.rotation.y = PLEKKEN.hallen.rot; ha.scale.set(1.3, 1.5, 1.1);
+    this.scene.add(ha);
+    // de grote fontein in het midden van de Markt (de oude klasmeter)
+    const fo = this._mesh(fonteinGebouw(), 'klasmeter');
+    fo.position.set(PLEIN.klasmeter.x, 0, PLEIN.klasmeter.z); this.scene.add(fo);
+    this.fontein = new Fontein(this, PLEIN.klasmeter);
+    // de ring die de klasvoortgang toont, blijft boven de fontein zweven
     this.meterRing = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.09, 8, 24), new THREE.MeshBasicMaterial({ color: '#ffd166' }));
-    this.meterRing.rotation.x = Math.PI / 2; this.meterRing.position.set(PLEIN.klasmeter.x, 0.8, PLEIN.klasmeter.z);
+    this.meterRing.rotation.x = Math.PI / 2; this.meterRing.position.set(PLEIN.klasmeter.x, 2.8, PLEIN.klasmeter.z);
     this.meterRing.userData.id = 'klasmeter'; this.scene.add(this.meterRing);
     const kl = this._mesh(kluisGebouw(), 'kluis');
     kl.position.set(PLEIN.kluis.x, 0, PLEIN.kluis.z); kl.rotation.y = PLEIN.kluis.rot; this.scene.add(kl);
     const mb = this._mesh(missiebordGebouw(), 'missiebord');
     mb.position.set(PLEIN.missiebord.x, 0, PLEIN.missiebord.z); mb.rotation.y = PLEIN.missiebord.rot; this.scene.add(mb);
   }
+
+  /** Themagebouwen die je kan binnengaan, plus de Brugse herkenningspunten. */
+  _bouwThema() {
+    const mk = {
+      scheepswerf: scheepswerfGebouw, waterlabo: waterlaboGebouw, sluis: sluisGebouw,
+      vuurtoren: vuurtorenGebouw, olvkerk: olvkerkGebouw,
+    };
+    this.plekObj = { belfort: this.belfort };
+    for (const [id, maak] of Object.entries(mk)) {
+      const p = PLEKKEN[id];
+      const m = this._mesh(maak(), 'plek:' + id);
+      m.position.set(p.x, 0, p.z); m.rotation.y = p.rot;
+      this.scene.add(m);
+      this.plekObj[id] = m;
+    }
+    // de sluisdeuren in de kolk
+    this.sluisdeuren = [-1, 1].map(zijde => {
+      const d = new THREE.Mesh(sluisdeurGeo(2.0), new THREE.MeshLambertMaterial({ vertexColors: true }));
+      d.position.set(zijde * 2.1, 0.5, -50.2 + zijde * 3.4);
+      d.rotation.y = zijde > 0 ? Math.PI : 0;
+      d.castShadow = true;
+      this.scene.add(d);
+      return d;
+    });
+    // molens op de vest, met draaiende wieken
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    this.molens = MOLENS.map((m, i) => {
+      const romp = this._mesh(molenGebouw(), 'molen');
+      romp.position.set(m.x, terreinHoogte(m.x, m.z), m.z); romp.rotation.y = m.rot;
+      this.scene.add(romp);
+      const w = new THREE.Mesh(wiekenGeo(), mat);
+      w.position.set(m.x + Math.cos(m.rot) * 0.0, terreinHoogte(m.x, m.z) + 2.75, m.z);
+      w.rotation.y = m.rot;
+      this.scene.add(w);
+      return { romp, wieken: w, fase: i * 1.4 };
+    });
+    // straatmeubilair op de Markt en langs de kaaien
+    const meubel = (geo, n) => { const im = new THREE.InstancedMesh(geo, mat, n); im.count = 0; im.castShadow = true; this.scene.add(im); return im; };
+    this.banken = meubel(bankGeo(), 60);
+    this.bloembakken = meubel(bloembakGeo(), 80);
+    this.vlaggen = meubel(vlagGeo(), 24);
+    let nb = 0, nf = 0, nv = 0;
+    const zet = (im, i, x, z, rot) => { M4.compose(V3.set(x, terreinHoogte(x, z), z), Q.setFromAxisAngle(YAS, rot), S3.set(1, 1, 1)); im.setMatrixAt(i, M4); };
+    for (let i = 0; i < 10; i++) { const a = i / 10 * TAU + 0.2; zet(this.banken, nb++, Math.cos(a) * 6.3, 4.3 + Math.sin(a) * 6.3, -a); }
+    for (const w of WATERS) {
+      if (w.soort !== 'strook') continue;
+      const z0 = Math.min(w.z0, w.z1), z1 = Math.max(w.z0, w.z1);
+      for (let z = z0 + 2; z < z1 - 1; z += 4.5) for (const zijde of [-1, 1]) {
+        if (nf < this.bloembakken.instanceMatrix.count) zet(this.bloembakken, nf++, w.x + zijde * (w.halfB + KADE + 0.45), z, zijde > 0 ? Math.PI / 2 : -Math.PI / 2);
+        if (this.r() < 0.3 && nb < this.banken.instanceMatrix.count) zet(this.banken, nb++, w.x + zijde * (w.halfB + KADE + 0.55), z + 1.6, zijde > 0 ? -Math.PI / 2 : Math.PI / 2);
+      }
+    }
+    for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; zet(this.vlaggen, nv++, Math.cos(a) * 5.0, 4.3 + Math.sin(a) * 5.0, 0); }
+    this.banken.count = nb; this.bloembakken.count = nf; this.vlaggen.count = nv;
+    for (const im of [this.banken, this.bloembakken, this.vlaggen]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+    // gewone Brugse huizen met trapgevels op de vrije kavels in de stad
+    this.stadsHuizen = [];
+    for (let v = 0; v < 6; v++) {
+      const mod = trapgevelHuis('rij' + v, v);
+      const body = new THREE.InstancedMesh(mod.body, this._lijfMat(), 120);
+      const ramen = mod.ramen ? new THREE.InstancedMesh(mod.ramen, this._raamMat(), 120) : null;
+      body.castShadow = true; body.receiveShadow = true; body.count = 0;
+      if (ramen) ramen.count = 0;
+      this.scene.add(body); if (ramen) this.scene.add(ramen);
+      this.stadsHuizen.push({ body, ramen });
+    }
+  }
+
+  /** Het water: de reien, de plassen, de kaaien, de bruggen, de waterval en wat er leeft. */
+  _bouwWater() {
+    this.water3d = new Water3D(this);
+    this.waterval = new Waterval(this, { x: 9.0, z: 36.4, hoogte: 2.6, breedte: 3.4 });
+  }
+
+  /** Het echte weer en seizoen van Brugge. */
+  _bouwWeer() {
+    this.weer3d = new Weer3D(this);
+    this.blaadjes = new Blaadjes(this, this.kwaliteit === 'hoog' ? 110 : 50);
+    this.weer3d.hangAan(this._lijfMat());
+    this.weer3d.hangAan(this.grondMat);
+    this.weer3d.hangAan(this.boomMat);
+    this.weer3d.hangAan(this.wegNet.wegMat);
+    this.weer3d.hangAan(this.wegNet.kruisMat);
+  }
+  /** Nieuw weer uit js/city/weer.js. */
+  setWeer(w) { this.weerNu = w; this.weer3d?.setWeer(w); }
+  /** Het seizoen bepaalt de bladkleuren en hoe vol de bomen staan. */
+  zetSeizoen(seizoen) {
+    if (this.seizoen === seizoen) return;
+    this.seizoen = seizoen;
+    this._boomKleuren = SEIZOEN_BLAD[seizoen] || SEIZOEN_BLAD.zomer;
+    this.bladVol = SEIZOEN_BLADVOL[seizoen] ?? 1;
+    if (this.model) this._zetBomen(this._extraBomen || []);
+  }
+
   _bouwHQs() {
     this.hqs = {};
     for (const w of WIJKEN) {
       const p = hqPositie(w);
       const m = this._mesh(hqGebouw(w.gids, w.macht), 'gids:' + w.gids);
-      m.position.set(p.x, 0, p.z); m.rotation.y = p.rot; this.scene.add(m);
+      m.position.set(p.x, 0, p.z); m.rotation.y = p.rot;
+      if (p.smal) m.scale.set(p.w / 6.4, 1, p.d / 4.8);     // smallere kavel aan het water
+      this.scene.add(m);
       this.hqs[w.gids] = { obj: m, p };
       if (w.gids === 'bram') {
         const v = new THREE.Mesh(vlamGeo(), new THREE.MeshBasicMaterial({ vertexColors: true }));
@@ -405,7 +579,6 @@ export class Stad3D {
       const cx = rr() * TAU, cr = RINGEN[RINGEN.length - 1] + 2 + rr() * 9.5;
       const p = polar(cr, cx);
       if (!isVrijVoorBoom(p.x, p.z)) continue;
-      if (Math.hypot(p.x - this.vijver.x, p.z - this.vijver.z) < 6) continue;
       if (rr() < 0.35 && cr < 50) continue;
       plant(p.x, p.z, 0.7 + rr() * 0.6, rr() < 0.3 ? 'den' : 'loof');
     }
@@ -417,7 +590,8 @@ export class Stad3D {
       if (y > 14 || Math.abs(p.z) < 4.5) continue;
       plant(p.x, p.z, 0.9 + rr() * 0.9, rr() < 0.75 ? 'den' : 'loof');
     }
-    this._boomKleuren = ['#5cb84a', '#6cc552', '#4fa844', '#86cf55', '#3f9a48', '#9bd35a', '#e8a33c', '#f2c94c'];
+    // enkel als het seizoen nog niet bekend is: zomerkleuren met wat herfstbomen ertussen
+    if (!this.seizoen) this._boomKleuren = ['#5cb84a', '#6cc552', '#4fa844', '#86cf55', '#3f9a48', '#9bd35a', '#e8a33c', '#f2c94c'];
   }
   _zetBomen(extra = []) {
     const alle = this.vasteBomen.concat(extra);
@@ -427,9 +601,11 @@ export class Stad3D {
       const i = b.soort === 'den' ? nd++ : nl++;
       if (i >= mesh.instanceMatrix.count) continue;
       E.set(0, rr() * TAU, 0); Q.setFromEuler(E);
-      M4.compose(V3.set(b.x, b.y || 0, b.z), Q, S3.set(b.s, b.s * (0.9 + rr() * 0.25), b.s));
+      const vol = b.soort === 'den' ? 1 : (this.bladVol ?? 1) * 0.5 + 0.5;
+      M4.compose(V3.set(b.x, b.y || 0, b.z), Q, S3.set(b.s * vol, b.s * (0.9 + rr() * 0.25), b.s * vol));
       mesh.setMatrixAt(i, M4);
-      const kk = b.soort === 'den' ? '#ffffff' : this._boomKleuren[rr() < 0.06 ? 6 + Math.floor(rr() * 2) : Math.floor(rr() * 6)];
+      const pal = this._boomKleuren;
+      const kk = b.soort === 'den' ? '#ffffff' : (pal[rr() < 0.06 ? 6 + Math.floor(rr() * 2) : Math.floor(rr() * 6)] || pal[0]);
       mesh.setColorAt(i, K.set(kk));
     }
     this.loof.count = Math.min(nl, this.loof.instanceMatrix.count); this.den.count = Math.min(nd, this.den.instanceMatrix.count);
@@ -573,10 +749,13 @@ export class Stad3D {
     }
     this.kraanBasis = [];
     for (let i = 0; i < nw; i++) { this.werf.getMatrixAt(i, M4); this.kraanBasis.push(M4.clone()); }
+    this._extraBomen = extraBomen;
     this._zetBomen(extraBomen);
+    this._zetStadsHuizen(model, bezet, stadR);
     this._zetHuizen(model.huizen);
+    if (model.water) this.water3d.setStand(model.water);
     this.figuren.zet(model, { inwoners: this.kwaliteit === 'hoog' ? 12 : 6 });
-    this.mistDoelR = model.mistRadius;
+    this.mistDoelR = model.mistRadius ?? MIST_MAX;   // vaste nevel aan de rand van het dal
     if (this.mistR == null) this.mistR = model.mistRadius;
     this.meterDoel = clamp(model.xp / Math.max(1, model.doelXp), 0, 1);
     this._zetOverlay();
@@ -596,6 +775,29 @@ export class Stad3D {
     M4.compose(V3.set(s.x, 0, s.z), Q, S3.set(sxz, Math.max(0.0001, sy), sxz));
     tm.body.setMatrixAt(i, M4); tm.body.instanceMatrix.needsUpdate = true;
     if (tm.ramen) { tm.ramen.setMatrixAt(i, M4); tm.ramen.instanceMatrix.needsUpdate = true; }
+  }
+
+  /** Gewone Brugse huizen (trapgevels) op de vrije kavels binnen de stad: zo staat de stad vol. */
+  _zetStadsHuizen(model, bezet, stadR) {
+    const n = this.stadsHuizen.map(() => 0);
+    const rb = rng('trapgevels');
+    for (const w of WIJKEN) {
+      for (const sl of kavels()[w.macht]) {
+        if (bezet.has(sl) || sl.r > stadR) continue;
+        if (rb() < 0.42) continue;                       // wat open plek voor parkjes
+        const v = Math.floor(rb() * this.stadsHuizen.length);
+        const h = this.stadsHuizen[v], i = n[v];
+        if (i >= h.body.instanceMatrix.count) continue;
+        const sy = 0.85 + rb() * 0.5;
+        M4.compose(V3.set(sl.x, 0, sl.z), Q.setFromAxisAngle(YAS, sl.rot), S3.set(1, sy, 1));
+        h.body.setMatrixAt(i, M4); if (h.ramen) h.ramen.setMatrixAt(i, M4);
+        n[v]++;
+      }
+    }
+    this.stadsHuizen.forEach((h, v) => {
+      h.body.count = n[v]; h.body.instanceMatrix.needsUpdate = true; h.body.visible = n[v] > 0; h.body.computeBoundingSphere();
+      if (h.ramen) { h.ramen.count = n[v]; h.ramen.instanceMatrix.needsUpdate = true; h.ramen.visible = n[v] > 0; h.ramen.computeBoundingSphere(); }
+    });
   }
 
   _zetHuizen(huizen) {
@@ -625,6 +827,21 @@ export class Stad3D {
     this.trein.userData.id = 'trein'; this.trein.traverse(o => o.userData.id = 'trein');
     this.kiesbaar = this.kiesbaar || []; this.kiesbaar.push(this.trein);
     this.scene.add(this.trein);
+    // de stadstram rijdt rondjes op de tweede ring, op eigen sporen in het wegdek
+    const R = RINGEN[1];
+    const railMat = new THREE.MeshLambertMaterial({ color: '#8a9099' });
+    for (const d of [-0.45, 0.45]) {
+      const rail = new THREE.Mesh(new THREE.TorusGeometry(R + d, 0.035, 5, 160), railMat);
+      rail.rotation.x = -Math.PI / 2; rail.position.y = 0.055;
+      this.scene.add(rail);
+    }
+    const tg = tramGeo();
+    this.tram = new THREE.Group();
+    const tbody = new THREE.Mesh(tg.body, this._lijfMat()); tbody.castShadow = true; this.tram.add(tbody);
+    if (tg.ramen) this.tram.add(new THREE.Mesh(tg.ramen, this._raamMat()));
+    this.tram.traverse(o => o.userData.id = 'tram');
+    this.tramR = R; this.tramHoek = 0;
+    this.scene.add(this.tram);
   }
   _updateVerkeer(dt) {
     // trein: 70 s per rondje, heen op het noordspoor, terug op het zuidspoor
@@ -641,6 +858,12 @@ export class Stad3D {
     this.trein.visible = zicht; this.trein.position.set(x, 0.1, z); this.trein.rotation.y = rot;
     this.treinStaat = (T >= 11 && T < 20) || (T >= 46 && T < 55) ? 'staat' : zicht ? 'rijdt' : 'weg';
     this.wegNet.tick(dt, this.t, { x, zicht, rijdt: this.treinStaat === 'rijdt', half: 5.6 + (this.treinStaat === 'rijdt' ? 6 : 0) });
+    // de tram: rustig rondje over de tweede ring, met een halte op de Markt
+    const halte = (this.t % 46) > 40;
+    this.tramHoek += (halte ? 0 : 1) * dt * 0.1;
+    const tx = Math.cos(this.tramHoek) * this.tramR, tz = Math.sin(this.tramHoek) * this.tramR;
+    this.tram.position.set(tx, 0.12, tz);
+    this.tram.rotation.y = -this.tramHoek + Math.PI / 2;
   }
 
   // ---------- de Grijze Mist ----------
@@ -823,6 +1046,20 @@ export class Stad3D {
     this.zon.position.copy(t).addScaledVector(dir, 120); this.zon.target.position.copy(t);
   }
 
+  /** Het weer dempt het licht en maakt de lucht grijs of mistig. */
+  _weerLicht() {
+    const g = this._weerGrijs ?? 0, mist = this.weerSterkte?.mist ?? 0, sneeuw = this.weerSterkte?.sneeuwdek ?? 0;
+    if (!g && !mist && !sneeuw) return;
+    const grijsK = new THREE.Color('#9fa6b4');
+    this.zon.intensity *= 1 - g * 0.55;
+    this.hemi.intensity *= 1 - g * 0.18;
+    this.luchtMat.uniforms.uTop.value.lerp(grijsK, g * 0.75);
+    this.luchtMat.uniforms.uHor.value.lerp(new THREE.Color('#c8ccd6'), Math.max(g * 0.7, mist * 0.9));
+    this.scene.fog.color.lerp(new THREE.Color('#cfd4dd'), Math.max(g * 0.5, mist * 0.95));
+    if (mist > 0.2) { this.scene.fog.near = Math.min(this.scene.fog.near, 10 + (1 - mist) * 40); this.scene.fog.far = Math.min(this.scene.fog.far, 70 + (1 - mist) * 160); }
+    if (sneeuw > 0.1) { this.hemi.color.lerp(new THREE.Color('#eaf2ff'), sneeuw * 0.3); }
+  }
+
   // ---------- post-processing: tilt-shift ----------
   _bouwPost() {
     this.postScene = new THREE.Scene();
@@ -942,6 +1179,8 @@ export class Stad3D {
   focus(id, dist = 30) { const p = this.positieVan(id); if (p) this.vliegNaar(p.x, p.z, dist); }
   positieVan(id) {
     if (!id) return null;
+    if (id.startsWith('plek:')) { const p = PLEKKEN[id.slice(5)]; return p ? { x: p.x, y: 3, z: p.z } : null; }
+    if (id.startsWith('water:')) { const w = WATERS.find(w => 'water:' + w.id === id); return w ? { x: w.x, y: 1, z: w.soort === 'strook' ? (w.z0 + w.z1) / 2 : w.z } : null; }
     if (id.startsWith('gids:')) { const h = this.hqs[id.slice(5)]; return h ? { x: h.p.x, y: 3, z: h.p.z } : null; }
     if (id === 'station') return { x: 0, y: 3, z: -2 };
     if (id === 'klasmeter') return { x: PLEIN.klasmeter.x, y: 3, z: PLEIN.klasmeter.z };
@@ -1051,6 +1290,29 @@ export class Stad3D {
       this.kraan.instanceMatrix.needsUpdate = true;
     }
   }
+  /** Weer, water, molens, fontein, waterval en de sluis: alles wat elk beeld meebeweegt. */
+  _updateWeerEnWater(dt) {
+    const w = this.weer3d?.tick(dt, this.t, this.cam) || { wind: 0.2, regen: 0, sneeuw: 0, mist: 0, windX: 0, windZ: 0 };
+    this.weerSterkte = w;
+    const zonDir = V3.copy(this.zon.position).sub(this.zon.target.position).normalize().clone();
+    this.water3d?.tick(dt, this.t, { nacht: this.nacht || 0, zonDir, wind: w.wind, windRichting: this.weerNu?.richting });
+    const helderFontein = this.water3d?.helder('fontein') ?? 0;
+    this.fontein?.tick(dt, this.t, helderFontein);
+    this.waterval?.tick(dt, this.t, helderFontein);
+    this.blaadjes?.tick(dt, this.t, this.seizoen === 'herfst' ? 0.8 + w.wind * 0.2 : 0, { x: w.windX, z: w.windZ });
+    // molenwieken en windvaan volgen de echte wind
+    const snelheid = 0.25 + (w.wind || 0) * 2.6;
+    for (const m of this.molens || []) { m.wieken.rotation.z = this.t * snelheid + m.fase; }
+    if (this.windvaan) this.windvaan.rotation.y = -((this.weerNu?.richting ?? 240) + 180) * Math.PI / 180;
+    // de sluisdeuren openen als de haven proper is
+    const haven = this.water3d?.helder('haven') ?? 0;
+    const open = haven > 0.9 ? (Math.sin(this.t * 0.25) * 0.5 + 0.5) : 0;
+    (this.sluisdeuren || []).forEach((d, i) => { d.rotation.y = (i ? Math.PI : 0) + (i ? -1 : 1) * open * 1.1; });
+    // de lucht wordt grijzer bij veel wolken, en mistig weer dempt het zicht
+    const grijs = clamp((w.wolken ?? 0.5) * 0.55 + (w.mist || 0) * 0.5, 0, 0.8);
+    this._weerGrijs = grijs;
+  }
+
   _stofwolk(x, z, f = 1) {
     for (let i = 0; i < 16 * f; i++) {
       const a = this.r() * TAU, v = 1.2 + this.r() * 2.2;
@@ -1088,8 +1350,10 @@ export class Stad3D {
     this.scene.fog.near = this.cs.dist + 30; this.scene.fog.far = this.cs.dist + 240;
     this.boomU.uT.value = this.t;
     this._updateLicht(dt);
+    this._weerLicht();
     this._updateVerkeer(dt);
     this.figuren.tick(dt, this.t);
+    this._updateWeerEnWater(dt);
     this._updateMist(dt);
     this._updateStorm(dt);
     this._updateAnims(dt);
@@ -1097,7 +1361,6 @@ export class Stad3D {
     if (this.meterDoel != null) { this.meterNu = lerp(this.meterNu ?? 0, this.meterDoel, 1 - Math.exp(-dt * 1.5)); this.meterRing.position.y = 0.7 + this.meterNu * 3.0; this.meterRing.rotation.z = this.t; }
     if (this.vlam) { this.vlam.scale.set(1, 0.85 + Math.sin(this.t * 11) * 0.12 + Math.sin(this.t * 17) * 0.06, 1); this.vlam.rotation.y = this.t * 2; }
     if (this.selRing.visible) this.selRing.material.opacity = 0.6 + Math.sin(this.t * 4) * 0.3;
-    this.water.material.color.setHSL(0.56, 0.7, 0.55 - this.nacht * 0.3);
     this._updateMarkers();
     // tekenen
     if (this.rt) {
