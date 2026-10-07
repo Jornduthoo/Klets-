@@ -1,12 +1,17 @@
-// Digibordscherm voor de raid: de Grijze Mist (Mist-golem) met HP.
-// Toont enkel de gezamenlijke juiste antwoorden. Nooit namen, nooit foute antwoorden.
+// Digibordscherm: de klasstad op groot scherm (met kaartlagen) en de raid tegen de Grijze Mist.
+// Tijdens een raid hangt de mist als een storm boven de stad. Toont enkel gezamenlijke cijfers: nooit namen, nooit foute antwoorden.
+import { QUESTE1 } from '../../data/queste1.js';
 import { createStore } from '../core/store.js';
 import { createSync } from '../core/sync.js';
 import { h, $, add, uid, clamp, blip } from '../core/util.js';
-import { drawText, textWidth } from '../game/pixel.js';
+import { drawText, textWidth } from '../game/sprites.js';
+import { maakStad } from '../city/stad.js';
+import { stadModel, NIVEAU_NAAM } from '../city/stadmodel.js';
+import { WIJK } from '../city/layout.js';
 
 const store = createStore();
 const sync = createSync('klas');
+const VIEW = { soort: new URLSearchParams(location.search).get('view') === 'stad' ? 'stad' : 'raid', stad: null, laag: null, tijd: 'cyclus' };
 const R = { raidId: null, naam: 'De Mist-golem (week 1)', status: 'klaar', hp: 0, maxHp: 0, juist: 0, joined: new Set(), seen: new Set(), autoHp: true, handHp: 60, shake: 0, flash: 0, parts: [], t: 0 };
 window.__raid = R;
 
@@ -21,12 +26,15 @@ async function init() {
   sync.subscribe('raid:hit', ({ raidId, hid }) => {
     if (raidId !== R.raidId || R.status !== 'actief' || R.seen.has(hid)) return;
     R.seen.add(hid); R.hp = Math.max(0, R.hp - 1); R.juist++; R.shake = 0.35; R.flash = 0.15;
+    zetStorm(true);
     for (let i = 0; i < 10; i++) R.parts.push({ x: 96 + (Math.random() - 0.5) * 30, y: 50 + (Math.random() - 0.5) * 20, vx: (Math.random() - 0.5) * 60, vy: -20 - Math.random() * 40, t: 0, life: 0.9 });
     blip('hit');
     if (R.hp <= 0) win(); else broadcast();
     ui();
   });
   sync.subscribe('raid:vraag', () => { if (R.raidId) broadcast(); });
+  sync.subscribe('klas:update', () => toonStad());
+  store.onChange(() => toonStad());
   if (Number(localStorage.getItem('klets:v1:leerkrachtTot') || 0) > Date.now()) return build();
   pin();
 }
@@ -46,13 +54,78 @@ let iv = null;
 function build() {
   const app = $('#app'); app.innerHTML = '';
   const cv = h('canvas', { id: 'boss', width: 192, height: 108, 'aria-label': 'De Grijze Mist' });
-  app.append(h('div', { class: 'bord' },
-    h('div', { class: 'bord-scene' }, cv,
-      h('div', { class: 'bord-hp' }, h('div', { class: 'bord-naam', id: 'b-naam' }), h('div', { class: 'balk hp groot' }, h('span', { id: 'b-hp' })), h('div', { class: 'bord-cijfers', id: 'b-cijfers' }))),
+  const stadBox = h('div', { class: 'bord-stad', id: 'b-stad', hidden: true });
+  app.append(h('div', { class: 'bord' + (VIEW.soort === 'stad' ? ' stadmodus' : '') },
+    h('div', { class: 'bord-scene' }, cv, stadBox,
+      h('div', { class: 'bord-stadinfo', id: 'b-stadinfo', hidden: true }),
+      h('div', { class: 'bord-lagen', id: 'b-lagen', hidden: true }),
+      h('div', { class: 'bord-hp', id: 'b-hpbox' }, h('div', { class: 'bord-naam', id: 'b-naam' }), h('div', { class: 'balk hp groot' }, h('span', { id: 'b-hp' })), h('div', { class: 'bord-cijfers', id: 'b-cijfers' }))),
     h('div', { class: 'bord-info', id: 'b-info', 'aria-live': 'polite' }),
     h('div', { class: 'bord-knoppen', id: 'b-knoppen' })));
   ui();
   loop(cv);
+  zetView(VIEW.soort);
+}
+
+// ---------- de stad op het digibord ----------
+async function zetView(soort) {
+  VIEW.soort = soort;
+  $('.bord')?.classList.toggle('stadmodus', soort === 'stad');
+  $('#boss').hidden = soort === 'stad';
+  $('#b-stad').hidden = soort !== 'stad';
+  $('#b-stadinfo').hidden = soort !== 'stad';
+  $('#b-lagen').hidden = soort !== 'stad';
+  if (soort === 'stad' && !VIEW.stad) {
+    VIEW.stad = await maakStad($('#b-stad'), { digibord: true, onPick: (id) => toonKaartje(id) });
+    window.__digibord = VIEW;
+    bouwLagen();
+  }
+  VIEW.stad?.pause(soort !== 'stad');
+  await toonStad();
+  zetStorm(false);
+  ui();
+}
+async function toonStad() {
+  if (!VIEW.stad) return;
+  const [settings, pupils, attempts] = await Promise.all([store.getSettings(), store.listPupils(), store.listAttempts()]);
+  VIEW.model = stadModel({ pupils, attempts, settings, doelen: QUESTE1.doelen });
+  VIEW.stad.update(VIEW.model);
+  if (!VIEW.tijdGezet) { VIEW.tijdGezet = true; VIEW.tijd = settings.dagNacht === 'dag' ? 'dag' : settings.dagNacht === 'nacht' ? 'nacht' : 'cyclus'; VIEW.stad.setTijd(VIEW.tijd); bouwLagen(); }
+  const m = VIEW.model, info = $('#b-stadinfo');
+  info.innerHTML = '';
+  add(info, h('b', { class: 'bs-naam' }, settings.klasNaam || 'Klets'),
+    h('div', { class: 'bs-cijfers' },
+      h('span', {}, h('b', {}, String(m.bevolking)), h('small', {}, 'reizigers')),
+      h('span', {}, h('b', {}, String(m.aantalGebouwd)), h('small', {}, 'gebouwen')),
+      h('span', {}, h('b', {}, String(m.xp)), h('small', {}, 'klas-XP')),
+      h('span', {}, h('b', {}, Math.round(m.mist * 100) + ' %'), h('small', {}, 'mist'))),
+    h('div', { class: 'balk klas groot' }, h('span', { style: { width: Math.round(clamp(m.xp / Math.max(1, m.doelXp), 0, 1) * 100) + '%' } })),
+    h('div', { class: 'bs-wijken' }, ...m.wijken.map(w => h('span', { class: 'bs-wijk', style: { '--k': kleurVan(w.macht) } }, `${w.naam}: ${w.gebouwd}`))));
+}
+const KLEUREN = { Taal: '#e9a23b', Getal: '#e2643e', Wereld: '#3fa37a', Hart: '#d9577b', Maker: '#4c8fd6', Brein: '#9a6ad6' };
+const kleurVan = (m) => KLEUREN[m] || '#888';
+function bouwLagen() {
+  const box = $('#b-lagen'); if (!box) return; box.innerHTML = '';
+  const lagen = [[null, 'Stad'], ['sterkte', 'Sterk en zwak'], ['wijken', 'Wijken']];
+  const tijden = [['cyclus', 'Dag en nacht'], ['dag', 'Dag'], ['avond', 'Avond'], ['nacht', 'Nacht']];
+  add(box, h('div', { class: 'bl-groep', role: 'group', 'aria-label': 'Kaartlaag' }, ...lagen.map(([id, t]) => h('button', { type: 'button', class: 'btn klein' + (VIEW.laag === id ? ' primair' : ''), 'data-laag': id || 'geen', onclick: () => { VIEW.laag = id; VIEW.stad.setOverlay(id); bouwLagen(); } }, t))),
+    h('div', { class: 'bl-groep', role: 'group', 'aria-label': 'Dag en nacht' }, ...tijden.map(([id, t]) => h('button', { type: 'button', class: 'btn klein' + (VIEW.tijd === id ? ' primair' : ''), onclick: () => { VIEW.tijd = id; VIEW.stad.setTijd(id); bouwLagen(); } }, t))),
+    VIEW.laag ? h('p', { class: 'bl-uitleg' }, 'Groen = sterk, geel = goed op weg, oranje = hier oefenen we samen verder. Enkel aantallen, nooit namen.') : null);
+}
+function toonKaartje(id) {
+  const oud = $('#b-kaartje'); if (oud) oud.remove();
+  const g = VIEW.model?.gebouwen.find(x => x.id === id);
+  if (!g) return;
+  const el = h('div', { class: 'bord-kaartje', id: 'b-kaartje', style: { '--k': kleurVan(g.macht) } },
+    h('small', {}, `${WIJK[g.macht].naam} - doel ${g.code}`), h('b', {}, g.gebouwd ? `${g.type} (${NIVEAU_NAAM[g.niveau].toLowerCase()})` : 'Bouwplaats'),
+    h('p', {}, g.doel), h('p', { class: 'bk-tel' }, g.gebouwd ? `${g.aantal} reiziger${g.aantal === 1 ? '' : 's'} bouwden mee.` : 'Hier wordt nog geoefend.'));
+  $('.bord-scene').append(el);
+  setTimeout(() => el.remove(), 12000);
+}
+function zetStorm(flits) {
+  if (!VIEW.stad) return;
+  const actief = R.status === 'actief' || R.status === 'lobby';
+  VIEW.stad.setStorm(actief ? 0.35 + 0.65 * (R.hp / Math.max(1, R.maxHp)) : 0, { flits });
 }
 
 function start(kind) {
@@ -63,10 +136,10 @@ function start(kind) {
   }
   if (kind === 'actief') { R.status = 'actief'; if (!R.autoHp) R.maxHp = R.hp = R.handHp; else { R.maxHp = R.hp = autoHp(); } }
   if (kind === 'gestopt') { R.status = 'gestopt'; setTimeout(() => clearInterval(iv), 6000); }
-  broadcast(); ui();
+  broadcast(); ui(); zetStorm(false);
 }
 async function win() {
-  R.status = 'gewonnen'; broadcast();
+  R.status = 'gewonnen'; broadcast(); zetStorm(false);
   for (let i = 0; i < 80; i++) R.parts.push({ x: 96 + (Math.random() - 0.5) * 70, y: 50 + (Math.random() - 0.5) * 40, vx: (Math.random() - 0.5) * 90, vy: (Math.random() - 0.5) * 90, t: 0, life: 2 });
   blip('code');
   try { await store.addEvent({ id: uid('e'), type: 'raid', naam: R.naam, juist: R.juist, deelnemers: R.joined.size, ts: Date.now() }); } catch {}
@@ -76,11 +149,12 @@ async function win() {
 
 function ui() {
   const k = $('#b-knoppen'); if (!k) return;
+  $('#b-hpbox').hidden = VIEW.soort === 'stad' && !(R.status === 'actief' || R.status === 'lobby');
   $('#b-naam').textContent = R.naam;
   $('#b-hp').style.width = (R.maxHp ? Math.round((R.hp / R.maxHp) * 100) : 100) + '%';
   $('#b-cijfers').textContent = R.maxHp ? `${R.hp} / ${R.maxHp} HP` : '';
   const info = {
-    klaar: 'Kies de levenspunten en open de raid. Daarna klikken de leerlingen op hun laptop op "Doe mee".',
+    klaar: VIEW.soort === 'stad' ? 'De klasstad. Elk gebouw is een doel dat de klas samen haalde. Open hier ook een raid: dan hangt de mist als een storm boven de stad.' : 'Kies de levenspunten en open de raid. Daarna klikken de leerlingen op hun laptop op "Doe mee".',
     lobby: `De raid staat open. Reizigers die meedoen: ${R.joined.size}. Klik op Start als iedereen klaar is.`,
     actief: `Samen al ${R.juist} juiste antwoorden! Reizigers: ${R.joined.size}.`,
     gewonnen: `De mist trekt op! ${R.juist} juiste antwoorden van de hele klas. Iedereen krijgt bonus-XP.`,
@@ -98,6 +172,8 @@ function ui() {
   } else if (R.status === 'actief') {
     add(k, h('button', { class: 'btn', type: 'button', id: 'b-stop', onclick: () => start('gestopt') }, 'Stop de raid'));
   }
+  add(k, VIEW.soort === 'stad' ? h('button', { class: 'btn', type: 'button', id: 'b-view', onclick: () => zetView('raid') }, 'Toon de Mist-golem')
+    : h('button', { class: 'btn', type: 'button', id: 'b-view', onclick: () => zetView('stad') }, 'Toon de stad'));
   add(k, h('a', { class: 'btn zacht', href: 'leerkracht.html' }, 'Dashboard'));
 }
 
@@ -110,7 +186,7 @@ function loop(cv) {
     R.shake = Math.max(0, R.shake - dt); R.flash = Math.max(0, R.flash - dt);
     for (const p of R.parts) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 40 * dt; }
     R.parts = R.parts.filter(p => p.t < p.life);
-    draw(g);
+    if (VIEW.soort !== 'stad') draw(g);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

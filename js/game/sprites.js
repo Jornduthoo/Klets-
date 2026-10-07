@@ -1,4 +1,5 @@
-// Pixelkunst in code: lettertype, gidsen, reizigers (avatars) en tegels.
+// Pixelkunst in code: lettertype, portretten van de gidsen en reizigers (avatars).
+// Gebruikt in menu's, panelen en op het dashboard. De stad zelf is 3D (zie js/city/).
 // Alles wordt getekend met rechthoeken op een gehele pixelschaal, zodat het scherp blijft.
 
 // ---------- 3x5 pixel-lettertype ----------
@@ -179,59 +180,4 @@ export function drawPerson(ctx, x, y, look = DEFAULT_LOOK, dir = 'down', frame =
   if (hoofd === 'veer') { p(11, -3, 1, 4, '#3fb34f'); p(12, -4, 1, 2, '#e04a3a'); }
   if (hoofd === 'koptelefoon') { p(4, 0, 8, 1, '#3a3a48'); p(2, 3, 2, 3, '#3ad1e6'); p(12, 3, 2, 3, '#3ad1e6'); }
   if (uit.hand === 'lantaarn') { const lx = dir === 'left' ? 1 : 13; p(lx, 10, 2, 3, K); p(lx, 11, 2, 1, '#ffd36b'); }
-}
-
-// ---------- Tegels (16x16) ----------
-export const TILE = 16;
-export function paintGrass(ctx, x, y, r, frame = 0) {
-  ctx.fillStyle = '#5a9e4b'; ctx.fillRect(x, y, 16, 16);
-  for (let i = 0; i < 7; i++) {
-    const gx = Math.floor(r() * 15), gy = Math.floor(r() * 14);
-    ctx.fillStyle = r() > 0.5 ? '#6bb35a' : '#4c8a3f';
-    ctx.fillRect(x + gx, y + gy, 1, 2);
-  }
-}
-export function paintFlowers(ctx, x, y, r, frame) {
-  paintGrass(ctx, x, y, r);
-  const cols = ['#f2e27a', '#f08aa8', '#ffffff', '#b9a0ff'];
-  for (let i = 0; i < 3; i++) {
-    const fx = 2 + Math.floor(r() * 11), fy = 2 + Math.floor(r() * 11), c = cols[Math.floor(r() * cols.length)];
-    const sway = (frame + i) % 2;
-    ctx.fillStyle = '#3d7a34'; ctx.fillRect(x + fx, y + fy + 1, 1, 2);
-    ctx.fillStyle = c; ctx.fillRect(x + fx - 1 + sway, y + fy - 1, 3, 1); ctx.fillRect(x + fx + sway, y + fy - 2, 1, 3);
-  }
-}
-export function paintPath(ctx, x, y, r) {
-  ctx.fillStyle = '#c9b48a'; ctx.fillRect(x, y, 16, 16);
-  for (let row = 0; row < 4; row++) {
-    const off = row % 2 ? 2 : 0;
-    for (let col = -1; col < 4; col++) {
-      ctx.fillStyle = r() > 0.5 ? '#d3c096' : '#bfa97e';
-      ctx.fillRect(x + col * 4 + off + 1, y + row * 4 + 1, 3, 3);
-    }
-  }
-}
-export function paintRail(ctx, x, y) {
-  ctx.fillStyle = '#6e6a62'; ctx.fillRect(x, y, 16, 16);
-  ctx.fillStyle = '#5b5750'; for (let i = 0; i < 6; i++) ctx.fillRect(x + (i * 5) % 16, y + (i * 7) % 16, 1, 1);
-  ctx.fillStyle = '#6b4a2f'; for (let i = 0; i < 16; i += 4) ctx.fillRect(x + i, y + 3, 2, 10);
-  ctx.fillStyle = '#b8c0c8'; ctx.fillRect(x, y + 4, 16, 1); ctx.fillRect(x, y + 11, 16, 1);
-  ctx.fillStyle = '#8a929a'; ctx.fillRect(x, y + 5, 16, 1); ctx.fillRect(x, y + 12, 16, 1);
-}
-export function paintPlatform(ctx, x, y, r, edge = false) {
-  ctx.fillStyle = '#a7a39a'; ctx.fillRect(x, y, 16, 16);
-  ctx.fillStyle = '#95918a'; ctx.fillRect(x, y + 15, 16, 1); ctx.fillRect(x + 15, y, 1, 16);
-  if (r() > 0.7) { ctx.fillStyle = '#b4b0a6'; ctx.fillRect(x + 3, y + 5, 2, 1); }
-  if (edge) { ctx.fillStyle = '#e8c547'; ctx.fillRect(x, y, 16, 2); ctx.fillStyle = '#7d7a73'; ctx.fillRect(x, y + 2, 16, 1); }
-}
-export function paintTreeTop(ctx, x, y, r) {
-  ctx.fillStyle = K; ctx.beginPath();
-  const blob = (cx, cy, rad, col) => { ctx.fillStyle = col; for (let dy = -rad; dy <= rad; dy++) { const w = Math.round(Math.sqrt(rad * rad - dy * dy)); ctx.fillRect(x + cx - w, y + cy + dy, w * 2, 1); } };
-  blob(8, 9, 8, '#1f4a2a'); blob(8, 8, 7, '#2f6e3a'); blob(7, 7, 5, '#3f8a46'); blob(6, 5, 2, '#57a85a');
-}
-export function paintTrunk(ctx, x, y) {
-  ctx.fillStyle = '#1f4a2a'; ctx.fillRect(x + 2, y, 12, 3);
-  ctx.fillStyle = '#4a3220'; ctx.fillRect(x + 6, y + 2, 4, 9);
-  ctx.fillStyle = '#6b4a2f'; ctx.fillRect(x + 7, y + 2, 2, 9);
-  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(x + 3, y + 11, 10, 2);
 }

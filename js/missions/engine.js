@@ -3,7 +3,7 @@ import { h, add, uid, rng, speak, blip, toast } from '../core/util.js';
 import { renderItem } from './types.js';
 import { kiesSet, xpVoorPoging, doelStatus } from '../core/model.js';
 import { ROUTE, GIDSEN, BEHAALD_GRENS } from '../config.js';
-import { GIDS_SPRITES, drawSprite } from '../game/pixel.js';
+import { GIDS_SPRITES, drawSprite } from '../game/sprites.js';
 
 export function gidsPortret(id, scale = 4) {
   const c = h('canvas', { width: 16 * scale, height: 16 * scale, class: 'portret', 'aria-hidden': 'true' });
@@ -57,7 +57,7 @@ export function runMission(opts) {
       ? `Deze opdracht doe je in de klas of in je Logboek. ${missie.les.titel}.`
       : 'Voor deze missie zijn nog geen digitale oefeningen.')),
     h('p', { class: 'tip' }, 'In een volgende versie van Klets! komt deze missie ook digitaal. Je mist niets: je leerkracht weet het.'));
-    btn.textContent = 'Terug naar het station'; btn.onclick = () => close(null);
+    btn.textContent = 'Terug naar de stad'; btn.onclick = () => close(null);
     return done;
   }
   add(body, h('div', { class: 'gids-zegt' }, h('p', {}, missie.intro || `Welkom, reiziger. Klaar voor '${missie.naam}'?`)),
@@ -139,7 +139,7 @@ export function runMission(opts) {
       mode === 'voorbeeld' ? h('p', { class: 'tip' }, 'Voorbeeldmodus: er wordt niets bewaard.') : h('p', { class: 'xp-win' }, xp ? `+${xp} XP` : 'Geen extra XP: je had deze missie al even goed of beter.'),
       schilden);
     if (xp) blip('xp');
-    btn.textContent = 'Terug naar het station';
+    btn.textContent = 'Terug naar de stad';
     btn.onclick = () => close({ attempt, xp, goed, totaal });
   }
   return done;

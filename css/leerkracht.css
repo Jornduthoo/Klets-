@@ -49,4 +49,28 @@ body.digibord { background: #0d1030; color: #f4ead3; }
 .bord-info { font-size: clamp(18px, 2.2vw, 30px); text-align: center; font-weight: 700; }
 .bord-knoppen { display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap; color: #f4ead3; }
 .bord-knoppen .invoer { color: var(--ink); }
-@media (max-width: 720px) { .form-grid { grid-template-columns: 1fr; } }
+/* digibord: de stad */
+.bord.stadmodus .bord-scene { min-height: calc(100vh - 150px); border-color: #0b1530; }
+.bord-stad { position: absolute; inset: 0; }
+.bord-stad canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.bord-stadinfo { position: absolute; top: 14px; left: 14px; background: rgba(250, 252, 255, .94); color: #1f2a3a; border-radius: 16px; padding: 12px 18px; box-shadow: 0 8px 26px rgba(0, 0, 0, .3); min-width: 340px; z-index: 3; }
+.bs-naam { font-size: clamp(22px, 2.4vw, 34px); color: #1f8be0; display: block; }
+.bs-cijfers { display: flex; gap: 22px; margin: 6px 0; }
+.bs-cijfers span { display: flex; flex-direction: column; align-items: center; }
+.bs-cijfers b { font-size: clamp(20px, 2vw, 30px); }
+.bs-cijfers small { font-size: .75em; text-transform: uppercase; color: #5d6b80; letter-spacing: .05em; }
+.bord-stadinfo .balk { border-width: 1px; border-radius: 8px; background: #dde5ef; }
+.bs-wijken { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; max-width: 460px; }
+.bs-wijk { --k: #888; border-left: 6px solid var(--k); background: #eef3f9; border-radius: 6px; padding: 1px 8px; font-size: .85em; font-weight: 700; }
+.bord-lagen { position: absolute; top: 14px; right: 14px; display: grid; gap: 8px; justify-items: end; z-index: 3; }
+.bl-groep { display: flex; gap: 6px; background: rgba(250, 252, 255, .9); padding: 6px; border-radius: 999px; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); }
+.bl-groep .btn { border-radius: 999px; box-shadow: none; border-width: 1px; }
+.bl-uitleg { background: rgba(20, 30, 54, .88); color: #eef4ff; padding: 8px 12px; border-radius: 12px; max-width: 360px; margin: 0; font-size: .9em; }
+.bord-kaartje { --k: #888; position: absolute; left: 14px; bottom: 14px; max-width: 420px; background: rgba(250, 252, 255, .95); color: #1f2a3a; border-radius: 14px; border-top: 8px solid var(--k); padding: 10px 14px; box-shadow: 0 8px 26px rgba(0, 0, 0, .3); z-index: 3; }
+.bord-kaartje b { display: block; font-size: 1.2em; }
+.bord-kaartje small { color: #5d6b80; }
+.bord-kaartje p { margin: 4px 0; }
+.bk-tel { font-weight: 700; }
+.bord.stadmodus .bord-hp { top: auto; bottom: 16px; z-index: 3; }
+.bord .stad-markers { display: none; }
+@media (max-width: 720px) { .form-grid { grid-template-columns: 1fr; } .bord-stadinfo { min-width: 0; left: 6px; right: 6px; } .bord-lagen { top: auto; bottom: 6px; } }

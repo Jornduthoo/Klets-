@@ -6,7 +6,7 @@ import { createSync } from '../core/sync.js';
 import { h, $, add, uid, rng, toast, downloadFile } from '../core/util.js';
 import { MACHTEN, ROUTES, ROUTE, GIDSEN, DAGEN } from '../config.js';
 import { buildCatalog, doelStats, doelStatus, rangVoor, klasXP, mistDichtheid, codeIndex, beloningVoor, machtVanCode, klasstadGebouwen } from '../core/model.js';
-import { drawPerson, AVATAR_OPTIES } from '../game/pixel.js';
+import { drawPerson, AVATAR_OPTIES } from '../game/sprites.js';
 
 const store = createStore();
 const sync = createSync('klas');
@@ -65,7 +65,7 @@ function render() {
   const main = h('main', { class: 'dash-main' });
   app.append(h('div', { class: 'dash' },
     h('header', { class: 'dash-kop' }, h('h1', { class: 'logo mini' }, 'Klets!'), h('span', { class: 'dash-sub' }, `Leerkracht - ${D.settings.klasNaam} - week ${D.settings.huidigeWeek}`),
-      h('a', { class: 'btn klein', href: 'index.html?leerkracht=1', target: '_blank' }, 'Open de wereld als leerkracht'),
+      h('a', { class: 'btn klein', href: 'index.html?leerkracht=1', target: '_blank' }, 'Open de stad als leerkracht'),
       h('button', { class: 'btn klein zacht', type: 'button', onclick: () => { localStorage.removeItem('klets:v1:leerkrachtTot'); showPin(); } }, 'Afmelden')),
     nav, main));
   ({ overzicht, leerlingen, doelen, revanche, weken, raid, codes, instellingen })[D.tab](main);
@@ -104,13 +104,15 @@ function overzicht(main) {
       h('div', { class: 'knoppen links' },
         h('label', { class: 'schakel' }, h('input', { type: 'checkbox', id: 'alles-open', checked: D.settings.allesOpen, onchange: (e) => saveSettings({ allesOpen: e.target.checked }) }), ' Alles open (ook latere weken)'),
         h('a', { class: 'btn primair', href: 'digibord.html', target: '_blank' }, 'Start een raid op het digibord'),
+        h('a', { class: 'btn', href: 'digibord.html?view=stad', target: '_blank', id: 'open-stad' }, 'Toon de klasstad op het digibord'),
         h('button', { class: 'btn', type: 'button', onclick: exportCSV }, 'Exporteer resultaten (CSV)'))),
     D.raid && ['lobby', 'actief'].includes(D.raid.status) ? h('p', { class: 'info-blok' }, `Er loopt een raid: ${D.raid.naam} - ${D.raid.hp}/${D.raid.maxHp} HP.`) : null,
     h('section', { class: 'dash-blok' }, h('h2', {}, 'Zo werkt het'),
       h('ul', {}, h('li', {}, 'Leerlingen melden zich aan met een voornaam of bijnaam en een avatar. Geen e-mail, geen wachtwoord.'),
         h('li', {}, "Alle oefeningen worden automatisch verbeterd. Elk resultaat wordt per doelcode bewaard. U hoeft niets te verbeteren."),
         h('li', {}, "Een doel is 'behaald' vanaf 70 % juist in een poging. Lager = Revanchelijst."),
-        h('li', {}, "Niets is op slot voor u: 'Alles open' zet ook latere weken open, en 'Open de wereld als leerkracht' toont alles."),
+        h('li', {}, "Niets is op slot voor u: 'Alles open' zet ook latere weken open, en 'Open de stad als leerkracht' toont alles."),
+        h('li', {}, 'De klasstad: elk doel dat minstens één leerling haalt, wordt een gebouw in de wijk van zijn macht. Hoe meer leerlingen het halen, hoe groter. De stad toont enkel aantallen, nooit wie iets nog niet haalde.'),
         h('li', {}, 'Let op: in deze versie bewaart elk toestel zijn eigen gegevens (localStorage). Gebruik Exporteer/Importeer (JSON) bij Instellingen om toestellen samen te voegen.'))));
 }
 const tegel = (b, s) => h('div', { class: 'tegel-stat' }, h('b', {}, String(b)), h('small', {}, s));
@@ -239,6 +241,8 @@ function raid(main) {
   add(main, h('section', { class: 'dash-blok' }, h('h2', {}, 'Raid op het digibord'),
     h('p', {}, 'Open het digibordscherm. Daar kiest u de raid en start u ze. Leerlingen zien op hun laptop een knop "Doe mee". Elk juist antwoord doet schade aan de Grijze Mist. Het digibord toont nooit wie fout antwoordde, alleen de juiste antwoorden van de klas samen.'),
     h('a', { class: 'btn primair groot', href: 'digibord.html', target: '_blank', id: 'open-digibord' }, 'Open het digibord'),
+    h('a', { class: 'btn groot', href: 'digibord.html?view=stad', target: '_blank' }, 'Digibord met de klasstad'),
+    h('p', { class: 'tip' }, 'In de stadsweergave hangt de Grijze Mist tijdens een raid als een storm boven de klasstad.'),
     D.raid ? h('p', { class: 'info-blok' }, `Laatste raid: ${D.raid.naam} - status ${D.raid.status} - ${D.raid.hp}/${D.raid.maxHp} HP - ${D.raid.deelnemers || 0} deelnemers.`) : h('p', { class: 'tip' }, 'Er loopt nu geen raid.'),
     h('p', { class: 'tip' }, 'Versie 1 werkt op een toestel (tabbladen in dezelfde browser). Voor echte laptops in de klas is de Supabase-koppeling nodig (zie README).')));
 }
@@ -270,7 +274,7 @@ function instellingen(main) {
       h('div', { class: 'form-grid' },
         h('label', {}, 'Huidige week'), h('select', { id: 'set-week', onchange: (e) => saveSettings({ huidigeWeek: +e.target.value }) }, ...QUESTE1.weken.map(w => h('option', { value: w.week, selected: s.huidigeWeek === w.week }, `week ${w.week}: ${w.titel}`))),
         h('label', {}, 'Alles open'), h('label', { class: 'schakel' }, h('input', { type: 'checkbox', checked: s.allesOpen, onchange: (e) => saveSettings({ allesOpen: e.target.checked }) }), ' ook latere weken openzetten voor leerlingen'),
-        h('label', {}, 'Dag en nacht'), h('select', { onchange: (e) => saveSettings({ dagNacht: e.target.value }) }, ...[['auto', 'automatisch: wordt dag als de mist optrekt'], ['nacht', 'altijd nacht'], ['dag', 'altijd dag']].map(([v, t]) => h('option', { value: v, selected: s.dagNacht === v }, t))),
+        h('label', {}, 'Dag en nacht'), h('select', { onchange: (e) => saveSettings({ dagNacht: e.target.value }) }, ...[['auto', 'automatisch: rustige dag-en-nachtcyclus'], ['nacht', 'altijd nacht'], ['dag', 'altijd dag']].map(([v, t]) => h('option', { value: v, selected: s.dagNacht === v }, t))),
         h('label', {}, 'Mistdoel'), h('span', {}, h('input', { type: 'number', class: 'invoer kort', min: 100, step: 100, value: s.mistDoel, onchange: (e) => saveSettings({ mistDoel: Math.max(100, +e.target.value || 1200) }) }), ' XP per leerling tot de mist helemaal weg is'),
         h('label', {}, 'Naam van de klas'), h('input', { type: 'text', class: 'invoer', value: s.klasNaam, maxlength: 40, onchange: (e) => saveSettings({ klasNaam: e.target.value || 'Station Klets' }) }),
         h('label', {}, 'PIN'), h('span', { class: 'code-rij' }, pin, h('button', { class: 'btn', type: 'button', onclick: () => { if (!/^\d{4,8}$/.test(pin.value)) return toast('Een PIN heeft 4 tot 8 cijfers.'); saveSettings({ pin: pin.value }); } }, 'PIN bewaren')))),
