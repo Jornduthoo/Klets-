@@ -1,8 +1,9 @@
 // Terugvalkaart zonder WebGL: dezelfde stad, isometrisch getekend op een 2D-canvas.
 // Zelfde methodes als Stad3D (update, setOverlay, markers, focus ...), zodat de app niets merkt.
 import { clamp, lerp, rng } from '../core/util.js';
-import { RINGEN, PLEIN_R, DAL_R, SPOOR_HALF, LAAN_HOEKEN, WIJKEN, KLEUR, PLEIN, POORT, kavels, hqPositie, polar } from './layout.js';
-import { AVATAR_OPTIES } from '../game/sprites.js';
+import { PLEIN_R, DAL_R, SPOOR_HALF, SPOOR_SPOREN, WEG_HALF, RIJBAAN, WIJKEN, KLEUR, PLEIN, POORT, kavels, hqPositie, gidsPlek, polar, stadStraal, isVrijVoorBoom } from './layout.js';
+import { wegennet, takLijn, KRUIS } from './wegen.js';
+import { AVATAR_OPTIES, dakKleur } from '../figuren/uiterlijk.js';
 
 const TAU = Math.PI * 2;
 const HOOGTE = [1.1, 2.3, 4.2, 7.5];
@@ -150,11 +151,28 @@ export class Stad2D {
     g.fillStyle = lucht; g.fillRect(0, 0, w, h);
     this._ellips(DAL_R + 8, n > 0.4 ? '#3c5a3a' : '#8fae6a');
     this._ellips(DAL_R, n > 0.4 ? '#3f6b3a' : '#86c95a');
-    for (const R of RINGEN) this._ellips(R, null, '#5b6372', Math.max(1, 1.4 * this.cam.zoom * 0.55));
-    for (const a of LAAN_HOEKEN) { const p0 = this.p(Math.cos(a) * RINGEN[0], 0, Math.sin(a) * RINGEN[0]), p1 = this.p(Math.cos(a) * RINGEN[6], 0, Math.sin(a) * RINGEN[6]); g.strokeStyle = '#5b6372'; g.lineWidth = Math.max(1, 1.3 * this.cam.zoom * 0.55); g.beginPath(); g.moveTo(p0.x, p0.y); g.lineTo(p1.x, p1.y); g.stroke(); }
     this._ellips(PLEIN_R, '#efe6d6');
-    { const a = this.p(-DAL_R, 0, -SPOOR_HALF + 0.6), b = this.p(DAL_R, 0, -SPOOR_HALF + 0.6), c2 = this.p(DAL_R, 0, SPOOR_HALF - 0.6), d = this.p(-DAL_R, 0, SPOOR_HALF - 0.6);
-      g.fillStyle = '#a9a196'; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c2.x, c2.y); g.lineTo(d.x, d.y); g.fill(); }
+    const vlak = (pts, kleur) => { g.fillStyle = kleur; g.beginPath(); pts.forEach((q, i) => { const s2 = this.p(q.x, 0, q.z); i ? g.lineTo(s2.x, s2.y) : g.moveTo(s2.x, s2.y); }); g.closePath(); g.fill(); };
+    // spoorbedding
+    vlak([{ x: -DAL_R, z: -SPOOR_HALF + 0.6 }, { x: DAL_R, z: -SPOOR_HALF + 0.6 }, { x: DAL_R, z: SPOOR_HALF - 0.6 }, { x: -DAL_R, z: SPOOR_HALF - 0.6 }], '#a9a196');
+    // wegennet: eerst stoepen, dan asfalt, dan kruispunten (zelfde graaf als de 3D-stad)
+    const net = wegennet(this.model?.stadR ?? stadStraal(this.model?.gebouwen || []));
+    const lint = (pts, half) => { const l = [], r = []; for (const q of pts) { l.push({ x: q.x - q.dz * half, z: q.z + q.dx * half }); r.push({ x: q.x + q.dz * half, z: q.z - q.dx * half }); } return l.concat(r.reverse()); };
+    const lijnen = net.takken.map(t => takLijn(t, 1.2, KRUIS * 0.9, KRUIS * 0.9));
+    for (const pts of lijnen) vlak(lint(pts, WEG_HALF), '#dcd8cf');
+    for (const k of net.knopen) { const rx = Math.cos(k.hoek), rz = Math.sin(k.hoek), tx = -rz, tz = rx, h2 = KRUIS; vlak([[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => ({ x: k.x + tx * a * h2 + rx * b * h2, z: k.z + tz * a * h2 + rz * b * h2 })), '#dcd8cf'); }
+    for (const pts of lijnen) vlak(lint(pts, RIJBAAN / 2), '#5d6676');
+    for (const k of net.knopen) {
+      const rx = Math.cos(k.hoek), rz = Math.sin(k.hoek), tx = -rz, tz = rx, h2 = KRUIS, a2 = RIJBAAN / 2;
+      const rect = (t0, t1, r0, r1) => vlak([[t0, r0], [t1, r0], [t1, r1], [t0, r1]].map(([t, r]) => ({ x: k.x + tx * t + rx * r, z: k.z + tz * t + rz * r })), '#5d6676');
+      rect(-h2, h2, -a2, a2);                                   // de ring loopt door
+      const binnenT = k.soort === 'T' && !(k.buiten && k.ring > 0), buitenT = k.soort === 'T' && k.buiten && k.ring > 0;
+      rect(-a2, a2, binnenT ? -a2 : -h2, buitenT ? a2 : h2);    // de laan
+    }
+    // sporen over alles heen (overwegen) en slagbomen
+    g.strokeStyle = '#7d838e'; g.lineWidth = Math.max(1, this.cam.zoom * 0.08);
+    for (const zz of SPOOR_SPOREN) for (const dz of [-0.26, 0.26]) { const a = this.p(-DAL_R - 6, 0, zz + dz), b = this.p(DAL_R + 6, 0, zz + dz); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
+    for (const o of net.overwegen) for (const zk of [-1, 1]) { const q = this.p(o.x - zk * 0.9, 0.5, o.z + zk * (SPOOR_HALF - 0.15)); g.fillStyle = '#e0453a'; g.fillRect(q.x - 2, q.y - 2, 4, 4); }
     // kaartlaag
     const m = this.model;
     if (m && this.overlay) {
@@ -172,7 +190,10 @@ export class Stad2D {
     obj.push({ x: PLEIN.kluis.x, z: PLEIN.kluis.z, f: () => this._blok(PLEIN.kluis.x, PLEIN.kluis.z, 1.6, 1.3, 1.6, 0, '#dfe3ea', '#8d6ad6', 'kluis') });
     obj.push({ x: PLEIN.missiebord.x, z: PLEIN.missiebord.z, f: () => this._blok(PLEIN.missiebord.x, PLEIN.missiebord.z, 2.2, 0.3, 1.9, 0, '#a8743f', '#e9a23b', 'missiebord') });
     obj.push({ x: POORT.x, z: POORT.z, f: () => this._blok(POORT.x, POORT.z, 3, 6, 7, 0, '#c9c2b8', '#e9a23b', 'poort') });
-    for (const wk of WIJKEN) { const p = hqPositie(wk); obj.push({ x: p.x, z: p.z, f: () => this._blok(p.x, p.z, 3, 3.6, 2.6, -p.rot, '#f6eedd', KLEUR[wk.macht], 'gids:' + wk.gids) }); }
+    for (const wk of WIJKEN) {
+      const p = hqPositie(wk); obj.push({ x: p.x, z: p.z, f: () => this._blok(p.x, p.z, 3, 3.6, 2.6, -p.rot, '#f6eedd', KLEUR[wk.macht], 'gids:' + wk.gids) });
+      const gp = gidsPlek(wk); obj.push({ x: gp.x, z: gp.z, f: () => { const q = this.p(gp.x, 0.9, gp.z), r0 = Math.max(3, this.cam.zoom * 0.42); g.fillStyle = KLEUR[wk.macht]; g.beginPath(); g.ellipse(q.x, q.y + r0 * 1.4, r0 * 0.8, r0 * 1.1, 0, 0, TAU); g.fill(); g.fillStyle = '#fbe3cf'; g.beginPath(); g.arc(q.x, q.y, r0, 0, TAU); g.fill(); g.fillStyle = '#2a2230'; g.fillRect(q.x - r0 * 0.4, q.y - r0 * 0.1, 2, 2); g.fillRect(q.x + r0 * 0.3, q.y - r0 * 0.1, 2, 2); } });
+    }
     if (m) {
       for (const b of m.gebouwen) {
         if (!b.slot) continue; const s = b.slot;
@@ -180,9 +201,10 @@ export class Stad2D {
         const t0 = this.groei?.get(b.id); const gr = t0 == null ? 1 : clamp((this.t - t0) / 1.2, 0, 1);
         obj.push({ x: s.x, z: s.z, f: () => this._blok(s.x, s.z, 1.7, 1.5, HOOGTE[b.niveau] * gr + 0.01, -s.rot, '#f6eedd', KLEUR[b.macht], b.id) });
       }
-      for (const hh of m.huizen) { const s = hh.slot; obj.push({ x: s.x, z: s.z, f: () => this._blok(s.x, s.z, 1.2, 1.0, 1.0, -s.rot, '#f6eedd', AVATAR_OPTIES.kleren[hh.look?.kleren ?? 3] || '#4c8fd6', hh.id) }); }
+      for (const hh of m.huizen) { const s = hh.slot; obj.push({ x: s.x, z: s.z, f: () => this._blok(s.x, s.z, 1.2, 1.0, 1.0, -s.rot, '#f6eedd', dakKleur(AVATAR_OPTIES.kleren[hh.look?.kleren ?? 3] || '#4c8fd6'), hh.id) }); }
       const r = rng('2dbomen');
-      for (let i = 0; i < 120; i++) { const p = polar(45 + r() * 8, r() * TAU); obj.push({ x: p.x, z: p.z, f: () => { const q = this.p(p.x, 0.8, p.z); g.fillStyle = '#4fa548'; g.beginPath(); g.arc(q.x, q.y, 0.55 * this.cam.zoom, 0, TAU); g.fill(); } }); }
+      const sr = net.stadR;
+      for (let i = 0; i < 160; i++) { const p = polar(sr + 2.5 + r() * Math.max(1, DAL_R - sr - 3), r() * TAU); if (!isVrijVoorBoom(p.x, p.z)) continue; obj.push({ x: p.x, z: p.z, f: () => { const q = this.p(p.x, 0.8, p.z); g.fillStyle = '#4fa548'; g.beginPath(); g.arc(q.x, q.y, 0.55 * this.cam.zoom, 0, TAU); g.fill(); } }); }
     }
     for (const o of obj) o.d = this.p(o.x, 0, o.z).d;
     obj.sort((a, b) => a.d - b.d).forEach(o => o.f());

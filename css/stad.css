@@ -35,7 +35,7 @@ body.in-stad { background: #9fd0f2; overflow: hidden; }
 .top-ik, .top-stad { background: var(--s-paneel); border: 1px solid var(--s-rand); border-radius: var(--s-r); box-shadow: var(--s-schaduw); backdrop-filter: blur(6px); }
 .top-ik { display: flex; gap: 10px; align-items: center; padding: 6px 14px 6px 6px; }
 .top-avatar { width: 46px; height: 46px; border-radius: 50%; background: linear-gradient(#cfe7fb, #a9d2f3); display: grid; place-items: center; overflow: hidden; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
-.top-avatar canvas { width: 32px; height: 40px; margin-top: 6px; }
+.top-avatar img { width: 100%; height: 100%; }
 .top-ik-tekst b { display: block; font-size: 1.02em; line-height: 1.1; }
 .top-ik-tekst small { display: block; color: var(--s-zacht); font-size: .78em; }
 .balkje { height: 8px; border-radius: 6px; background: #dde5ef; overflow: hidden; min-width: 120px; margin-top: 4px; }
@@ -195,3 +195,34 @@ body.in-stad { --ink: #1f2a3a; --zacht: #5d6b80; --rand: 2px solid #c6d4e6; --pe
 .in-stad .balk { border-width: 1px; border-radius: 8px; background: #dde5ef; }
 .in-stad #toasts .toast { background: rgba(20, 30, 54, .92); box-shadow: 0 6px 20px rgba(0, 0, 0, .3); border-radius: 999px; padding: 8px 18px; }
 @media (min-width: 721px) { .in-stad #toasts { bottom: 104px; } }
+
+/* ---------- aanmelden en reiziger maken: zelfde zachte stijl als de stad ---------- */
+body.in-aanmelden { background: linear-gradient(180deg, #6db7f0 0%, #b9def8 46%, #e3f2fc 64%, #b9e2a0 71%, #8cc964 100%) fixed; }
+.in-aanmelden .login, .in-aanmelden .creator { color: var(--s-ink); }
+.in-aanmelden .logo { font-family: var(--font); font-weight: 900; letter-spacing: 1px; color: #ffb02e;
+  -webkit-text-stroke: 3px #fff; paint-order: stroke fill; text-shadow: 0 6px 0 #e2643e, 0 14px 26px rgba(18, 30, 60, .35); }
+.in-aanmelden .logo.klein { font-size: 52px; }
+.in-aanmelden .login-kop p { color: #fff; font-weight: 700; text-shadow: 0 1px 3px rgba(18, 30, 60, .45); }
+.in-aanmelden .kaart-blok, .in-aanmelden .creator-grid { background: var(--s-paneel); border: 1px solid var(--s-rand); border-radius: 22px; box-shadow: var(--s-schaduw); backdrop-filter: blur(8px); }
+.in-aanmelden .reiziger-kaart { border: 1px solid var(--s-rand); border-radius: 18px; background: linear-gradient(180deg, #e8f4fe 0%, #ffffff 70%); box-shadow: 0 3px 10px rgba(18, 30, 60, .14); padding: 12px 6px 10px; transition: transform .12s, box-shadow .12s; }
+.in-aanmelden .reiziger-kaart:hover, .in-aanmelden .reiziger-kaart:focus-visible { transform: translateY(-3px); box-shadow: 0 8px 18px rgba(18, 30, 60, .2); background: #fff; }
+.in-aanmelden .reiziger-kaart img { filter: drop-shadow(0 4px 3px rgba(18, 30, 60, .22)); }
+.in-aanmelden .btn { border: 1px solid var(--s-rand); border-radius: 999px; box-shadow: 0 2px 6px rgba(18, 30, 60, .18); background: #fff; padding-inline: 1.1em; }
+.in-aanmelden .btn:active { transform: translateY(1px); box-shadow: 0 1px 2px rgba(18, 30, 60, .2); }
+.in-aanmelden .btn.primair { background: linear-gradient(180deg, #ffc35a, #f39a2b); border-color: #d9831c; color: #2a1a05; }
+.in-aanmelden .invoer { border: 1px solid #c9d4e3; border-radius: 12px; box-shadow: inset 0 1px 2px rgba(18, 30, 60, .08); }
+.in-aanmelden .invoer:focus { border-color: var(--s-blauw); outline: 3px solid rgba(31, 139, 224, .25); }
+.in-aanmelden .creator-prev { background: radial-gradient(circle at 50% 38%, #ffffff 0%, #d9eefc 55%, #a9d3f2 100%); border: 1px solid var(--s-rand); border-radius: 18px; padding: 6px; }
+.in-aanmelden .creator-prev canvas { cursor: grab; touch-action: none; }
+.in-aanmelden .staal { border: 1px solid #c9d4e3; border-radius: 12px; background: #fff; }
+.in-aanmelden .staal.sel { outline: 3px solid var(--s-blauw); outline-offset: 1px; background: #eaf5ff; }
+.in-aanmelden .staal img { border-radius: 50%; background: radial-gradient(circle at 50% 40%, #fff, #dcecf9); }
+.in-aanmelden .kleur { border-radius: 50%; width: 30px; height: 30px; border: 2px solid #fff; box-shadow: 0 0 0 1px #c9d4e3; }
+.in-aanmelden .login-voet a { color: #24486e; font-weight: 700; }
+.fig-beeld { image-rendering: auto; }
+.garderobe-prev { display: flex; justify-content: center; background: radial-gradient(circle at 50% 38%, #ffffff 0%, #d9eefc 55%, #a9d3f2 100%); border-radius: 16px; }
+.bs-wijk img { width: 26px; height: 26px; border-radius: 50%; background: rgba(255, 255, 255, .85); vertical-align: middle; margin-right: 6px; }
+.bord-kaartje .bk-gids { float: right; margin: -4px -4px 4px 8px; }
+.bord-kaartje .bk-gids img { width: 56px; height: 56px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #fff, #dcecf9); border: 3px solid var(--k); }
+.bord-gids .marker-rond img { width: 36px; height: 36px; }
+.dash-avatar { width: 40px; height: 40px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #fff, #dcecf9); }

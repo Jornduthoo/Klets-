@@ -1,7 +1,7 @@
 // Van klasgegevens naar een stad: welke gebouwen staan er, hoe groot, waar, en hoe ver is de mist weg.
 // Puur rekenwerk, geen tekenen. Wordt gedeeld door de leerlingenapp, het digibord en de 2D-terugvalkaart.
 import { doelStats, doelStatus, machtVanCode, klasXP, mistDichtheid } from '../core/model.js';
-import { WIJKEN, WIJK, kavels, huisKavels, hqPositie, MIST_MIN, MIST_MAX } from './layout.js';
+import { WIJKEN, WIJK, kavels, huisKavels, hqPositie, stadStraal, MIST_MIN, MIST_MAX } from './layout.js';
 
 /** Niveau 0..3 van een gebouw: hoe meer reizigers het doel haalden, hoe groter. */
 export function niveauVoor(aantal, klasGrootte) {
@@ -99,7 +99,7 @@ export function stadModel({ pupils = [], attempts = [], settings = {}, doelen = 
   for (const g of gebouwen) verst = Math.max(verst, g.slot ? g.slot.r : 0);
   const mistRadius = Math.max(MIST_MIN + (MIST_MAX - MIST_MIN) * (1 - mist), verst + 3.2);
   return {
-    gebouwen, wijken, huizen, xp, mist, mistRadius,
+    gebouwen, wijken, huizen, xp, mist, mistRadius, stadR: stadStraal(gebouwen),
     doelXp: n * (settings.mistDoel || 1200), bevolking: leerlingen.length,
     aantalGebouwd: gebouwen.filter(g => g.gebouwd).length,
   };

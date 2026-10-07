@@ -54,7 +54,7 @@ a { color: var(--info); }
 .reizigers { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin: 12px 0 20px; }
 .reiziger-kaart { display: flex; flex-direction: column; align-items: center; gap: 6px; border: var(--rand); border-radius: 8px; background: var(--perkament2); padding: 10px 6px; cursor: pointer; font-weight: 700; box-shadow: 3px 3px 0 var(--ink); }
 .reiziger-kaart:hover { background: #fff; }
-.avatar, .portret { image-rendering: pixelated; image-rendering: crisp-edges; }
+.avatar, .portret { image-rendering: auto; }
 .login-voet { text-align: center; margin-top: 24px; }
 .login-voet a { color: #c9c3e8; }
 .creator-grid { display: grid; grid-template-columns: 240px 1fr; gap: 20px; background: var(--perkament); color: var(--ink); border: var(--rand); box-shadow: var(--schaduw); border-radius: 10px; padding: 20px; margin-top: 16px; }

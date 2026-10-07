@@ -4,10 +4,11 @@ import { QUESTE1 } from '../../data/queste1.js';
 import { createStore } from '../core/store.js';
 import { createSync } from '../core/sync.js';
 import { h, $, add, uid, clamp, blip } from '../core/util.js';
-import { drawText, textWidth } from '../game/sprites.js';
 import { maakStad } from '../city/stad.js';
 import { stadModel, NIVEAU_NAAM } from '../city/stadmodel.js';
-import { WIJK } from '../city/layout.js';
+import { WIJK, WIJKEN } from '../city/layout.js';
+import { gidsBeeld } from '../figuren/portret.js';
+import { GIDSEN } from '../config.js';
 
 const store = createStore();
 const sync = createSync('klas');
@@ -53,7 +54,7 @@ let iv = null;
 
 function build() {
   const app = $('#app'); app.innerHTML = '';
-  const cv = h('canvas', { id: 'boss', width: 192, height: 108, 'aria-label': 'De Grijze Mist' });
+  const cv = h('canvas', { id: 'boss', width: 1152, height: 648, 'aria-label': 'De Grijze Mist' });
   const stadBox = h('div', { class: 'bord-stad', id: 'b-stad', hidden: true });
   app.append(h('div', { class: 'bord' + (VIEW.soort === 'stad' ? ' stadmodus' : '') },
     h('div', { class: 'bord-scene' }, cv, stadBox,
@@ -78,6 +79,9 @@ async function zetView(soort) {
   if (soort === 'stad' && !VIEW.stad) {
     VIEW.stad = await maakStad($('#b-stad'), { digibord: true, onPick: (id) => toonKaartje(id) });
     window.__digibord = VIEW;
+    // de gidsen staan bij hun gebouw: een rond portret erboven
+    for (const w of WIJKEN) VIEW.stad.zetMarker('gids:' + w.gids, h('div', { class: 'marker hq bord-gids', style: { '--k': kleurVan(w.macht) } },
+      h('span', { class: 'marker-rond' }, gidsBeeld(w.gids, { px: 40 })), h('span', { class: 'marker-naam' }, `${GIDSEN[w.gids].naam} - ${w.hq}`)), 'gids:' + w.gids);
     bouwLagen();
   }
   VIEW.stad?.pause(soort !== 'stad');
@@ -100,7 +104,7 @@ async function toonStad() {
       h('span', {}, h('b', {}, String(m.xp)), h('small', {}, 'klas-XP')),
       h('span', {}, h('b', {}, Math.round(m.mist * 100) + ' %'), h('small', {}, 'mist'))),
     h('div', { class: 'balk klas groot' }, h('span', { style: { width: Math.round(clamp(m.xp / Math.max(1, m.doelXp), 0, 1) * 100) + '%' } })),
-    h('div', { class: 'bs-wijken' }, ...m.wijken.map(w => h('span', { class: 'bs-wijk', style: { '--k': kleurVan(w.macht) } }, `${w.naam}: ${w.gebouwd}`))));
+    h('div', { class: 'bs-wijken' }, ...m.wijken.map(w => h('span', { class: 'bs-wijk', style: { '--k': kleurVan(w.macht) } }, gidsBeeld(w.gids, { px: 26 }), `${w.naam}: ${w.gebouwd}`))));
 }
 const KLEUREN = { Taal: '#e9a23b', Getal: '#e2643e', Wereld: '#3fa37a', Hart: '#d9577b', Maker: '#4c8fd6', Brein: '#9a6ad6' };
 const kleurVan = (m) => KLEUREN[m] || '#888';
@@ -117,6 +121,7 @@ function toonKaartje(id) {
   const g = VIEW.model?.gebouwen.find(x => x.id === id);
   if (!g) return;
   const el = h('div', { class: 'bord-kaartje', id: 'b-kaartje', style: { '--k': kleurVan(g.macht) } },
+    h('div', { class: 'bk-gids' }, gidsBeeld(WIJK[g.macht].gids, { px: 56 })),
     h('small', {}, `${WIJK[g.macht].naam} - doel ${g.code}`), h('b', {}, g.gebouwd ? `${g.type} (${NIVEAU_NAAM[g.niveau].toLowerCase()})` : 'Bouwplaats'),
     h('p', {}, g.doel), h('p', { class: 'bk-tel' }, g.gebouwd ? `${g.aantal} reiziger${g.aantal === 1 ? '' : 's'} bouwden mee.` : 'Hier wordt nog geoefend.'));
   $('.bord-scene').append(el);
@@ -179,7 +184,7 @@ function ui() {
 
 // ---------- tekenen ----------
 function loop(cv) {
-  const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+  const g = cv.getContext('2d');
   let last = performance.now();
   const frame = (now) => {
     const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; R.t += dt;
@@ -192,42 +197,62 @@ function loop(cv) {
   requestAnimationFrame(frame);
 }
 function draw(g) {
+  // logisch 192 x 108, getekend op 6x met zachte vormen in de stijl van de stad
+  g.setTransform(6, 0, 0, 6, 0, 0);
   const frac = R.maxHp ? R.hp / R.maxHp : 1;
   const won = R.status === 'gewonnen';
   const dawn = won ? 1 : 1 - frac; // lucht wordt lichter naarmate de mist zwakker wordt
   const sky = g.createLinearGradient(0, 0, 0, 108);
-  sky.addColorStop(0, mix('#0d1030', '#7fb6e8', dawn)); sky.addColorStop(1, mix('#2a2550', '#f6c98a', dawn));
+  sky.addColorStop(0, mix('#1b2350', '#6fb2f0', dawn)); sky.addColorStop(1, mix('#3b3a6a', '#ffd6a6', dawn));
   g.fillStyle = sky; g.fillRect(0, 0, 192, 108);
-  // sterren of zon
-  if (dawn < 0.6) { g.fillStyle = `rgba(255,255,255,${0.8 - dawn})`; for (let i = 0; i < 30; i++) g.fillRect((i * 53) % 192, (i * 29) % 50, 1, 1); }
-  if (dawn > 0.3) { g.fillStyle = '#ffe08a'; const sy = 90 - dawn * 60; circle(g, 160, sy, 9); }
-  // station-silhouet
-  g.fillStyle = mix('#151830', '#3b4a7a', dawn);
-  g.fillRect(0, 86, 192, 22); g.fillRect(20, 70, 50, 16); g.fillRect(110, 74, 60, 12); g.fillRect(40, 62, 10, 8); g.fillRect(140, 66, 6, 8);
-  for (let i = 0; i < 8; i++) { g.fillStyle = '#ffe08a'; g.fillRect(26 + i * 5, 76, 2, 3); }
-  g.fillStyle = mix('#222222', '#555555', dawn); g.fillRect(0, 96, 192, 2);
-  // golem
+  if (dawn < 0.6) { g.fillStyle = `rgba(255,255,255,${0.8 - dawn})`; for (let i = 0; i < 40; i++) bol(g, (i * 53) % 192, (i * 29) % 50, 0.35 + (i % 3) * 0.15); }
+  if (dawn > 0.3) { const sy = 90 - dawn * 60, gr = g.createRadialGradient(160, sy, 2, 160, sy, 22); gr.addColorStop(0, 'rgba(255,236,170,1)'); gr.addColorStop(0.35, 'rgba(255,224,138,.9)'); gr.addColorStop(1, 'rgba(255,224,138,0)'); g.fillStyle = gr; g.fillRect(130, sy - 30, 60, 60); }
+  // heuvels en stad (zacht, afgerond)
+  heuvel(g, mix('#26305e', '#7fbf6a', dawn), 92, [[0, 90], [40, 84], [90, 88], [140, 82], [192, 88]]);
+  const st = mix('#1d2448', '#4d6aa8', dawn);
+  g.fillStyle = st;
+  rr(g, 22, 68, 48, 22, 2); rr(g, 34, 60, 22, 10, 2); rr(g, 108, 72, 62, 18, 2); rr(g, 138, 64, 8, 9, 1); rr(g, 74, 76, 26, 14, 2);
+  g.fillStyle = mix('#ffd27a', '#fff1c4', dawn);
+  for (let i = 0; i < 7; i++) rr(g, 27 + i * 6, 74, 2.6, 3.2, 0.6);
+  for (let i = 0; i < 8; i++) rr(g, 113 + i * 7, 77, 2.6, 3.2, 0.6);
+  heuvel(g, mix('#3a5a3a', '#86c95a', dawn), 108, [[0, 94], [60, 92], [120, 95], [192, 93]]);
+  g.fillStyle = mix('#555a66', '#a9a196', dawn); g.fillRect(0, 97, 192, 2.2);
+  // de mist-golem: een vriendelijke wolk met gele ogen
   if (!won || R.parts.length) {
     const s = won ? 0 : 0.45 + 0.55 * frac;
     if (s > 0) {
-      const ox = R.shake ? Math.round((Math.random() - 0.5) * 6) : 0;
-      const cx = 96 + ox, cy = 52 + Math.sin(R.t * 1.5) * 2;
+      const ox = R.shake ? (Math.random() - 0.5) * 6 : 0;
+      const cx = 96 + ox, cy = 50 + Math.sin(R.t * 1.5) * 2;
       const puffs = [[0, 0, 26], [-20, 6, 16], [20, 6, 16], [-12, -14, 14], [12, -14, 14], [0, -20, 12], [-30, 16, 10], [30, 16, 10], [0, 18, 18]];
-      for (const [dx, dy, r] of puffs) { g.fillStyle = R.flash ? '#ffffff' : '#7d7a8c'; circle(g, cx + dx * s, cy + dy * s, r * s + 1); }
-      for (const [dx, dy, r] of puffs) { g.fillStyle = R.flash ? '#ffffff' : '#a9a6b8'; circle(g, cx + dx * s - 1, cy + dy * s - 2, r * s - 2); }
-      for (let i = 0; i < 6; i++) { g.fillStyle = 'rgba(220,220,235,0.5)'; circle(g, cx + Math.sin(R.t + i) * 30 * s, cy + 20 * s + Math.cos(R.t * 1.3 + i) * 6, 4 * s); }
-      // ogen (knipperen)
-      const blink = Math.sin(R.t * 2.2) > 0.97;
-      g.fillStyle = '#22192a'; g.fillRect(cx - 10 * s - 2, cy - 4 * s - 2, 6, blink ? 1 : 6); g.fillRect(cx + 10 * s - 3, cy - 4 * s - 2, 6, blink ? 1 : 6);
-      if (!blink) { g.fillStyle = '#f2e27a'; g.fillRect(cx - 10 * s - 1, cy - 4 * s - 1, 2, 2); g.fillRect(cx + 10 * s - 2, cy - 4 * s - 1, 2, 2); }
-      g.fillStyle = '#5a5668'; g.fillRect(cx - 6 * s, cy + 8 * s, 12 * s, 2);
+      for (const [dx, dy, r] of puffs) {
+        const x = cx + dx * s, y = cy + dy * s, rad = r * s;
+        const gr = g.createRadialGradient(x - rad * 0.35, y - rad * 0.45, rad * 0.1, x, y, rad * 1.05);
+        gr.addColorStop(0, R.flash ? '#ffffff' : '#e3e1ee'); gr.addColorStop(1, R.flash ? '#f2f2ff' : '#8f8ba3');
+        g.fillStyle = gr; bol(g, x, y, rad);
+      }
+      for (let i = 0; i < 6; i++) { g.fillStyle = 'rgba(230,230,242,0.45)'; bol(g, cx + Math.sin(R.t + i) * 30 * s, cy + 20 * s + Math.cos(R.t * 1.3 + i) * 6, 4 * s); }
+      const knip = Math.sin(R.t * 2.2) > 0.97;
+      for (const k of [-1, 1]) {
+        const ex = cx + k * 10 * s, ey = cy - 4 * s;
+        g.fillStyle = '#2a2240'; g.beginPath(); g.ellipse(ex, ey, 3.2, knip ? 0.5 : 3.6, 0, 0, Math.PI * 2); g.fill();
+        if (!knip) { g.fillStyle = '#ffe066'; g.beginPath(); g.ellipse(ex, ey + 0.3, 2.2, 2.6, 0, 0, Math.PI * 2); g.fill(); g.fillStyle = '#fff'; bol(g, ex - 0.8, ey - 1, 0.7); }
+      }
+      g.strokeStyle = '#5a5668'; g.lineWidth = 1.2; g.lineCap = 'round'; g.beginPath(); g.arc(cx, cy + 6 * s, 5 * s, 0.25 * Math.PI, 0.75 * Math.PI); g.stroke();
     }
   }
-  for (const p of R.parts) { g.fillStyle = `rgba(255,240,180,${1 - p.t / p.life})`; g.fillRect(Math.round(p.x), Math.round(p.y), 2, 2); }
-  if (won) { const t = 'DE MIST TREKT OP!'; drawText(g, t, 96 - textWidth(t) / 2, 20, '#22192a'); }
-  if (R.status === 'lobby') { const t = 'DOE MEE OP JE LAPTOP'; drawText(g, t, 96 - textWidth(t) / 2, 8, '#f2e27a', 1, '#22192a'); }
+  for (const p of R.parts) { g.fillStyle = `rgba(255,240,180,${1 - p.t / p.life})`; bol(g, p.x, p.y, 1.1); }
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '800 9px system-ui, -apple-system, Segoe UI, sans-serif';
+  const tekst = (t, y, kleur) => { g.lineWidth = 2.4; g.strokeStyle = 'rgba(20,24,48,.55)'; g.lineJoin = 'round'; g.strokeText(t, 96, y); g.fillStyle = kleur; g.fillText(t, 96, y); };
+  if (won) tekst('De mist trekt op!', 18, '#ffffff');
+  if (R.status === 'lobby') tekst('Doe mee op je laptop', 10, '#ffe066');
 }
-function circle(g, cx, cy, r) { r = Math.max(1, Math.round(r)); for (let y = -r; y <= r; y++) { const w = Math.round(Math.sqrt(r * r - y * y)); g.fillRect(Math.round(cx - w), Math.round(cy + y), w * 2, 1); } }
+function bol(g, x, y, r) { g.beginPath(); g.arc(x, y, Math.max(0.2, r), 0, Math.PI * 2); g.fill(); }
+function rr(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); g.fill(); }
+function heuvel(g, kleur, bodem, pts) {
+  g.fillStyle = kleur; g.beginPath(); g.moveTo(0, bodem); g.lineTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; g.quadraticCurveTo(x0 + (x1 - x0) / 2, Math.min(y0, y1) - 3, x1, y1); }
+  g.lineTo(192, bodem); g.closePath(); g.fill();
+}
 function mix(a, b, t) {
   const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
   const c = (sh) => Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t);

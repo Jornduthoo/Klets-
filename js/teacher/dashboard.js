@@ -6,7 +6,8 @@ import { createSync } from '../core/sync.js';
 import { h, $, add, uid, rng, toast, downloadFile } from '../core/util.js';
 import { MACHTEN, ROUTES, ROUTE, GIDSEN, DAGEN } from '../config.js';
 import { buildCatalog, doelStats, doelStatus, rangVoor, klasXP, mistDichtheid, codeIndex, beloningVoor, machtVanCode, klasstadGebouwen } from '../core/model.js';
-import { drawPerson, AVATAR_OPTIES } from '../game/sprites.js';
+import { avatarBeeld } from '../figuren/portret.js';
+import { AVATAR_OPTIES } from '../figuren/uiterlijk.js';
 
 const store = createStore();
 const sync = createSync('klas');
@@ -72,7 +73,7 @@ function render() {
 }
 
 // ---------- hulp ----------
-function avatar(look, s = 2) { const c = h('canvas', { width: 16 * s, height: 18 * s, class: 'avatar', 'aria-hidden': 'true' }); const g = c.getContext('2d'); g.imageSmoothingEnabled = false; g.scale(s, s); drawPerson(g, 0, 2, look, 'down', 0); return c; }
+function avatar(look) { return avatarBeeld(look, { px: 40, klasse: 'avatar dash-avatar' }); }
 function doelRoute(code) { return QUESTE1.doelen[code]?.route || ''; }
 function doelTekst(code) { return QUESTE1.doelen[code]?.doel || ''; }
 function codesVanWeek(week, route = 'alle') {

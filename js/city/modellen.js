@@ -48,19 +48,27 @@ const cylCache = new Map();
 function cylGeo(rt, rb, seg) { const k = rt + ':' + rb + ':' + seg; if (!cylCache.has(k)) cylCache.set(k, new THREE.CylinderGeometry(rt, rb, 1, seg, 1).translate(0, .5, 0)); return cylCache.get(k); }
 const sphCache = new Map();
 function sphGeo(seg, half) { const k = seg + ':' + half; if (!sphCache.has(k)) sphCache.set(k, new THREE.SphereGeometry(1, seg, Math.max(3, Math.round(seg / 2)), 0, Math.PI * 2, 0, half ? Math.PI / 2 : Math.PI)); return sphCache.get(k); }
+const torCache = new Map();
+function torGeo(r, t, seg, boog) { const k = r + ':' + t + ':' + seg + ':' + boog; if (!torCache.has(k)) torCache.set(k, new THREE.TorusGeometry(r, t, 6, seg, boog)); return torCache.get(k); }
 const icoCache = new Map();
 function icoGeo(d) { if (!icoCache.has(d)) icoCache.set(d, new THREE.IcosahedronGeometry(1, d)); return icoCache.get(d); }
 
 /** Verzamelt onderdelen en voegt ze samen tot een geometrie met vertexkleuren. */
 export class Bouwer {
-  constructor(seed = 'x') { this.delen = []; this.ramen = []; this.r = rng(seed); this.ao = true; }
+  constructor(seed = 'x') { this.delen = []; this.ramen = []; this.r = rng(seed); this.ao = true; this.deel = null; }
   _add(lijst, geo, p, rot, s, kleur) {
     tmpE.set(rot[0] || 0, rot[1] || 0, rot[2] || 0);
     tmpQ.setFromEuler(tmpE);
     tmpM.compose(tmpP.set(p[0], p[1], p[2]), tmpQ, tmpS.set(s[0], s[1], s[2]));
-    lijst.push({ geo, m: tmpM.clone(), kleur });
+    lijst.push({ geo, m: tmpM.clone(), kleur, deel: this.deel });
     return this;
   }
+  /** Onderdelen die hierna komen, bewegen apart (voor figuren): soort 1 = been, 2 = arm, 3 = hoofd; scharnier op hoogte py; kant -1/1. */
+  zetDeel(soort = 0, py = 0, kant = 0) { this.deel = soort ? [soort, py, kant] : null; return this; }
+  /** ellipsoïde (middelpunt x,y,z) */
+  ellips(rx, ry, rz, x, y, z, kleur, seg = 12, rot = [0, 0, 0]) { return this._add(this.delen, sphGeo(seg, false), [x, y, z], rot, [rx, ry, rz], kleur); }
+  /** torus (ring) rond de z-as; rot draait hem */
+  torus(r, t, x, y, z, kleur, rot = [0, 0, 0], seg = 16, boog = Math.PI * 2) { return this._add(this.delen, torGeo(r, t, seg, boog), [x, y, z], rot, [1, 1, 1], kleur); }
   /** blok met onderkant op y */
   box(w, h, d, x, y, z, kleur, ry = 0) { return this._add(this.delen, GEO.box, [x, y, z], [0, ry, 0], [w, h, d], kleur); }
   /** zadeldak: nok langs x (of langs z met ry = PI/2) */
@@ -112,15 +120,17 @@ export class Bouwer {
   _merge(lijst) {
     if (!lijst.length) return null;
     let n = 0;
-    const geos = lijst.map(d => { const g = d.geo.index ? d.geo.toNonIndexed() : d.geo.clone(); g.applyMatrix4(d.m); n += g.attributes.position.count; return { g, kleur: d.kleur }; });
+    const geos = lijst.map(d => { const g = d.geo.index ? d.geo.toNonIndexed() : d.geo.clone(); g.applyMatrix4(d.m); n += g.attributes.position.count; return { g, kleur: d.kleur, deel: d.deel }; });
     const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), kl = new Float32Array(n * 3);
+    const metDelen = lijst.some(d => d.deel), dl = metDelen ? new Float32Array(n * 3) : null;
     let o = 0;
     let ymax = 0;
     for (const { g } of geos) { const p = g.attributes.position.array; for (let i = 1; i < p.length; i += 3) ymax = Math.max(ymax, p[i]); }
-    for (const { g, kleur } of geos) {
+    for (const { g, kleur, deel } of geos) {
       const p = g.attributes.position.array, nn = g.attributes.normal.array;
       col.set(kleur).convertSRGBToLinear();
       pos.set(p, o * 3); nor.set(nn, o * 3);
+      if (dl) { const dd = deel || [0, 0, 0]; for (let i = 0; i < p.length / 3; i++) dl.set(dd, (o + i) * 3); }
       for (let i = 0; i < p.length / 3; i++) {
         // zachte "ambient occlusion": onderaan iets donkerder
         const y = p[i * 3 + 1];
@@ -134,6 +144,7 @@ export class Bouwer {
     out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     out.setAttribute('color', new THREE.BufferAttribute(kl, 3));
+    if (dl) out.setAttribute('aDeel', new THREE.BufferAttribute(dl, 3));
     out.computeBoundingSphere(); out.computeBoundingBox();
     out.userData.hoogte = ymax;
     return out;
@@ -334,10 +345,10 @@ export function hqGebouw(gids, macht) {
       .ramenRond(2.6, 2.0, 0, -0.2, 0.08, 1, 1.0, 5).ramenRond(1.4, 1.4, -0.5, -0.5, 1.4, 2, 1.0, 2).glasband(1.6, 1.6, -0.5, -0.5, 3.65, 0.7, 0.9)
       .cil(0.05, 0.05, 2.2, 1.2, 0.08, 1.3, C.donker, 6).box(0.5, 0.15, 0.08, 1.2, 1.9, 1.3, A).box(0.5, 0.15, 0.08, 1.2, 1.5, 1.3, C.wit);
   } else if (gids === 'bram') {
-    b.cil(2.1, 2.1, 0.06, 0, 0.04, -0.2, C.gras, 20).cil(0.5, 0.55, 0.22, 0, 0.08, -0.2, '#8a8f99', 10);
-    for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2; if (Math.sin(a) > 0.75) continue; b.box(0.75, 0.22, 0.3, Math.cos(a) * 1.35, 0.08, -0.2 + Math.sin(a) * 1.35, C.hout, -a + Math.PI / 2); }
-    b.cil(0.06, 0.06, 1.5, -1.3, 0.08, -1.6, C.wit, 6).cil(0.06, 0.06, 1.5, 1.3, 0.08, -1.6, C.wit, 6)
-      .kegel(1.8, 0.9, 0, 1.55, -1.6, A, 6).boom(1.4, 1.5, 1.4).boom(-1.4, 1.4, 1.1).bloemen(0.2, 1.8, 1.0, 0.3);
+    b.cil(1.62, 1.62, 0.06, 0, 0.04, -0.3, C.gras, 20).cil(0.5, 0.55, 0.22, 0, 0.08, -0.2, '#8a8f99', 10);
+    for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2; if (Math.sin(a) > 0.75) continue; b.box(0.7, 0.22, 0.28, Math.cos(a) * 1.2, 0.08, -0.2 + Math.sin(a) * 1.2, C.hout, -a + Math.PI / 2); }
+    b.cil(0.06, 0.06, 1.5, -1.05, 0.08, -1.2, C.wit, 6).cil(0.06, 0.06, 1.5, 1.05, 0.08, -1.2, C.wit, 6)
+      .kegel(1.3, 0.85, 0, 1.55, -1.2, A, 6).boom(1.3, 1.6, 1.2).boom(-1.3, 1.5, 1.0).bloemen(0.2, 1.85, 1.0, 0.3);
   } else if (gids === 'byte') {
     b.box(2.9, 1.5, 2.4, 0, 0.08, -0.7, C.grijs);
     for (let i = 0; i < 4; i++) b.dak(0.725, 0.5, 2.4, -1.09 + i * 0.725, 1.58, -0.7, A);
@@ -345,6 +356,8 @@ export function hqGebouw(gids, macht) {
       .cil(0.05, 0.05, 1.3, 0.75, 0.9, 0.3, C.donker, 6).ramenRond(2.9, 2.4, 0, -0.7, 0.08, 1, 1.0, 5, 0.3, 0.45, [1, 2, 3])
       .box(0.3, 0.3, 0.3, 1.1, 0.08, 1.2, A).box(0.3, 0.3, 0.3, 1.1, 0.38, 1.2, Al).box(0.3, 0.3, 0.3, 0.75, 0.08, 1.3, C.wit);
   }
+  // voorpleintje waar de gids staat
+  b.cil(0.62, 0.62, 0.05, 2.35, 0, 1.35, C.pad, 18).cil(0.5, 0.5, 0.052, 2.35, 0, 1.35, tint(A, 1.55), 18);
   return b.bouw();
 }
 
@@ -357,8 +370,8 @@ export function huisGebouw(dakKleur, deco = [], seed = 'h') {
   const has = (id) => deco.includes(id);
   let dak = dakKleur;
   if (has('kleur-goud')) dak = '#f2c230';
-  if (has('kleur-nacht')) dak = '#2b3a78';
-  if (has('cape')) dak = '#2b3a78';
+  if (has('kleur-nacht')) dak = '#5a73cf';
+  if (has('cape')) dak = '#5a73cf';
   b.box(1.95, 0.05, 1.95, 0, 0, 0, C.gras);
   const padK = has('spoor-licht') ? '#fff3b0' : has('spoor-sterren') ? '#e8dcff' : has('spoor-blaadjes') ? '#b9e39a' : has('spoor-noten') ? '#bfe3ff' : has('spoor-letters') ? '#ffe2b8' : C.pad;
   b.box(0.36, 0.06, 0.65, 0, 0.01, 0.65, padK);
@@ -490,7 +503,7 @@ export function kraanArmGeo() {
 }
 export function lampGeo() {
   const b = new Bouwer('lamp'); b.ao = false;
-  b.cil(0.025, 0.035, 0.9, 0, 0, 0, '#4a5162', 5).box(0.22, 0.04, 0.06, 0.08, 0.9, 0, '#4a5162');
+  b.cil(0.025, 0.035, 0.9, 0, 0, 0, '#6b7385', 5).box(0.22, 0.04, 0.06, 0.08, 0.9, 0, '#6b7385');
   return b.bouw().body;
 }
 export function mensGeo() {

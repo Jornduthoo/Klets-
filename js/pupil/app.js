@@ -6,7 +6,8 @@ import { createSync } from '../core/sync.js';
 import { h, $, add, uid, clamp, speak, blip, toast, rng } from '../core/util.js';
 import { MACHTEN, ROUTE, ROUTES, GIDSEN, RANGEN, XP, DAGEN } from '../config.js';
 import { buildCatalog, kiesSet, routeVoor, isOpen, rangVoor, klasXP, doelStats, doelStatus, codeIndex, beloningVoor, normCode, KOSMETIEK } from '../core/model.js';
-import { drawPerson, AVATAR_OPTIES, DEFAULT_LOOK } from '../game/sprites.js';
+import { AVATAR_OPTIES, DEFAULT_LOOK, HAAR_NAAM } from '../figuren/uiterlijk.js';
+import { avatarBeeld, maakVoorbeeld, warmOp } from '../figuren/portret.js';
 import { maakStad, bewaarKwaliteit } from '../city/stad.js';
 import { stadModel, goalMissieIndex, HUISDECOR, NIVEAU_NAAM } from '../city/stadmodel.js';
 import { WIJK, WIJKEN } from '../city/layout.js';
@@ -55,8 +56,10 @@ async function refresh({ vlieg = false } = {}) {
 // ---------- aanmelden ----------
 async function showLogin() {
   S.pupils = await store.listPupils();
+  document.body.classList.add('in-aanmelden');
   const app = $('#app'); app.innerHTML = '';
-  const kaarten = S.pupils.map(p => h('button', { class: 'reiziger-kaart', type: 'button', onclick: () => login(p) }, avatarCanvas(p.look, 4), h('span', {}, p.naam)));
+  warmOp(['atlas', 'woordje', 'tella', 'kroniek', 'bram', 'byte']);
+  const kaarten = S.pupils.map(p => h('button', { class: 'reiziger-kaart', type: 'button', onclick: () => login(p) }, avatarBeeld(p.look, { px: 84, vorm: 'vol' }), h('span', {}, p.naam)));
   app.append(h('main', { class: 'login' },
     h('div', { class: 'login-kop' }, h('h1', { class: 'logo' }, 'Klets!'), h('p', {}, 'Queste 1: Aankomst in Station Klets')),
     h('section', { class: 'kaart-blok' },
@@ -68,33 +71,30 @@ async function showLogin() {
 async function login(p) { sessionStorage.setItem('klets-pid', p.id); S.pupil = p; enterWorld(); }
 function logout() { sessionStorage.removeItem('klets-pid'); location.href = location.pathname; }
 
-function avatarCanvas(look, scale = 4, dir = 'down') {
-  const c = h('canvas', { width: 16 * scale, height: 20 * scale, class: 'avatar', 'aria-hidden': 'true' });
-  const g = c.getContext('2d'); g.imageSmoothingEnabled = false; g.scale(scale, scale);
-  drawPerson(g, 0, 4, look || DEFAULT_LOOK, dir, 0);
-  return c;
-}
+/** Portret van een reiziger (3D-figuur, als beeld). */
+function avatarPortret(look, px = 48, vorm = 'portret') { return avatarBeeld(look || DEFAULT_LOOK, { px, vorm }); }
 
 function showCreator() {
   const look = { ...DEFAULT_LOOK, huid: Math.floor(Math.random() * 6), kleren: Math.floor(Math.random() * 8), uitrusting: {} };
+  document.body.classList.add('in-aanmelden');
   const app = $('#app'); app.innerHTML = '';
   const prev = h('div', { class: 'creator-prev' });
-  let dirI = 0; const dirs = ['down', 'right', 'up', 'left'];
-  const paint = () => { prev.innerHTML = ''; prev.append(avatarCanvas(look, 9, dirs[dirI])); };
+  const vb = maakVoorbeeld(prev, look, { px: 210 });
+  const paint = () => { vb.zet({ ...look }); };
   const naam = h('input', { type: 'text', class: 'invoer', maxlength: 16, autocomplete: 'off', placeholder: 'Voornaam of bijnaam', 'aria-label': 'Voornaam of bijnaam', id: 'naam' });
   const fout = h('p', { class: 'fout', 'aria-live': 'polite' });
   const rij = (label, key, opties, render) => h('div', { class: 'keuze-rij' }, h('span', { class: 'rij-lbl' }, label),
     h('div', { class: 'stalen' }, ...opties.map((o, i) => {
       const val = typeof o === 'string' && key === 'haar' ? o : i;
-      const b = h('button', { type: 'button', class: 'staal' + (look[key] === val ? ' sel' : ''), 'aria-label': `${label} ${i + 1}`, onclick: () => { look[key] = val; b.parentElement.querySelectorAll('.staal').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); paint(); } }, render(o, i));
+      const b = h('button', { type: 'button', class: 'staal' + (look[key] === val ? ' sel' : ''), 'aria-label': key === 'haar' ? `${label}: ${HAAR_NAAM[o] || o}` : `${label} ${i + 1}`, onclick: () => { look[key] = val; b.parentElement.querySelectorAll('.staal').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); paint(); } }, render(o, i));
       return b;
     })));
   const sw = (c) => h('span', { class: 'kleur', style: { background: c } });
-  const hairPrev = (style) => avatarCanvas({ ...look, haar: style, uitrusting: {} }, 2);
+  const hairPrev = (style) => avatarBeeld({ ...look, haar: style, uitrusting: {} }, { px: 40 });
   app.append(h('main', { class: 'creator' },
     h('h1', { class: 'logo klein' }, 'Klets!'),
     h('div', { class: 'creator-grid' },
-      h('div', { class: 'creator-links' }, prev, h('button', { type: 'button', class: 'btn klein', onclick: () => { dirI = (dirI + 1) % 4; paint(); } }, 'Draai')),
+      h('div', { class: 'creator-links' }, prev, h('button', { type: 'button', class: 'btn klein', onclick: () => vb.draai(Math.PI / 2) }, 'Draai'), h('p', { class: 'tip' }, 'Sleep om je reiziger rond te draaien.')),
       h('div', { class: 'creator-rechts' },
         h('label', { class: 'lbl', for: 'naam' }, 'Hoe heet je in Station Klets?'), naam,
         h('p', { class: 'tip' }, 'Gebruik je voornaam of een bijnaam. Geen achternaam.'),
@@ -130,7 +130,7 @@ const LAGEN = [[null, 'Geen kaartlaag'], ['sterkte', 'Doelen: sterk en zwak'], [
 async function enterWorld() {
   S.pupils = await store.listPupils();
   const app = $('#app'); app.innerHTML = '';
-  document.body.classList.add('in-stad');
+  document.body.classList.add('in-stad'); document.body.classList.remove('in-aanmelden');
   const view = h('div', { class: 'stad-view', id: 'stad' });
   const top = h('header', { class: 'stad-top' });
   const adviseurs = h('aside', { class: 'adviseurs', 'aria-label': 'Adviseurs' });
@@ -235,7 +235,7 @@ function bouwCamKnoppen(el) {
 function updateHud() {
   const p = S.pupil, rang = rangVoor(p.xp || 0);
   const av = $('#hud-avatar'); if (!av) return;
-  av.innerHTML = ''; av.append(avatarCanvas(p.look, 2));
+  av.innerHTML = ''; av.append(avatarPortret(p.look, 46));
   $('#hud-naam').textContent = p.naam;
   $('#hud-rang').textContent = `${rang.naam} - ${p.xp || 0} XP`;
   $('#hud-xp').style.width = Math.round(rang.pct * 100) + '%';
@@ -347,7 +347,7 @@ async function toonInfo(id) {
   if (id.startsWith('huis:')) {
     const hu = S.model.huizen.find(x => x.id === id); if (!hu) return sluitInfo();
     const deco = Object.keys(hu.huis?.deco || {}).filter(x => hu.huis.deco[x]);
-    add(k, kop(hu.ik ? 'Jouw huis' : `Huis van ${hu.naam}`, 'Reizigerswijk', '#e9a23b', avatarCanvas(hu.look, 2)),
+    add(k, kop(hu.ik ? 'Jouw huis' : `Huis van ${hu.naam}`, 'Reizigerswijk', '#e9a23b', avatarPortret(hu.look, 48)),
       h('p', {}, deco.length ? 'Versierd met: ' + deco.map(d => HUISDECOR[d]).filter(Boolean).join(', ') + '.' : (hu.ik ? 'Je huis is nog niet versierd. Codes uit je Logboek geven versiering.' : 'Een gezellig huis in de Reizigerswijk.')),
       hu.ik ? h('div', { class: 'ik-knoppen' }, h('button', { type: 'button', class: 'btn primair', onclick: () => openHuis() }, 'Versier je huis')) : null);
     return;
@@ -583,7 +583,8 @@ async function openKluis() {
       })));
     // garderobe
     const mine = p.leerkracht ? Object.keys(KOSMETIEK) : (p.kosmetiek || []);
-    const prevBox = h('div', { class: 'garderobe-prev' }, avatarCanvas(p.look, 6));
+    const prevBox = h('div', { class: 'garderobe-prev' });
+    maakVoorbeeld(prevBox, p.look, { px: 150 });
     const slots = {};
     for (const id of mine) { const k = KOSMETIEK[id]; if (k) (slots[k.slot] = slots[k.slot] || []).push(id); }
     const SLOTNAMEN = { hoofd: 'Hoofd', nek: 'Nek', gezicht: 'Gezicht', rug: 'Rug', hand: 'Hand', spoor: 'Spoor', kleur: 'Jas' };

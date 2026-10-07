@@ -58,17 +58,21 @@ Alle paden zijn relatief, dus de app werkt ook in een submap. Het bestand `.noje
 ## Wat zit erin
 
 ### Voor leerlingen (`index.html`)
-- **Aanmelden** met een voornaam of bijnaam en een zelfgemaakte pixel-avatar (huid, haar of hoofddoek, kleuren). Geen e-mail, geen wachtwoord.
+- **Aanmelden** met een voornaam of bijnaam en een zelfgemaakte 3D-reiziger (huid, haar of hoofddoek, haarkleur, jas, broek), met een
+  draaiend voorbeeld dat je met de muis rondsleept. Wat je in de codekluis vrijspeelt (petten, bril, sjaal, cape, lantaarn ...) draagt je reiziger ook. Geen e-mail, geen wachtwoord.
 - **De klasstad Klets** (3D): een low-poly stad in een dal, schuin van bovenaf bekeken zoals in een stadsbouwspel.
   Slepen = schuiven, scrollen of knijpen = zoomen, rechtermuisknop (of Shift + slepen, of de pijlknoppen rechtsonder) = draaien.
   Met het toetsenbord: pijltjes of WASD/ZQSD schuiven, Q en E draaien, + en - zoomen.
-  Levende details: auto's op de ringwegen, voetgangers op het plein, een trein die stopt in Station Klets en in de tunnels verdwijnt,
+  Levende details: auto's die op hun rijstrook rijden en op kruispunten afslaan, overwegen met slagbomen en knipperlichten waar de
+  wegen het spoor kruisen, een trein die stopt in Station Klets en in de tunnels verdwijnt, de zes gidsen in 3D bij hun gebouw,
+  je eigen reiziger op de stoep voor je huis en de andere reizigers op het stationsplein,
   wuivende bomen, wolken boven de bergen, kranen op bouwplaatsen, een kampvuur bij Bram, een tilt-shift-look (wazig boven- en onderaan).
 - **De stad is de voortgang van de klas.** Elk doel dat minstens één leerling haalt, wordt een gebouw in de wijk van zijn macht:
   Woordenwijk (Taal, bibliotheken), Getallenwijk (Getal, rekentorens), Kaartenwijk (Wereld, kaartenhuizen en een sterrenwacht),
   Hartenwijk (Hart, tuinen en serres), Makerswijk (Maker, werkplaatsen), Breinwijk (Brein, uitkijktorens).
   Hoe meer leerlingen het doel halen, hoe groter (4 niveaus). Een doel dat geoefend wordt maar nog niet gehaald is, is een **bouwplaats** met een kraan.
-  Nieuwe gebouwen verschijnen met een bouwanimatie (steiger, stofwolk, pop) en de camera vliegt erheen. De ringwegen groeien mee met de stad.
+  Nieuwe gebouwen verschijnen met een bouwanimatie (steiger, stofwolk, pop) en de camera vliegt erheen. De ringwegen groeien mee met de stad,
+  altijd vanuit bestaande wegen: elke ring is een gesloten lus met T- en X-kruispunten, zonder doodlopende stukken.
 - **Grijze Mist**: ligt aan de rand van het dal en trekt terug naarmate de klas-XP groeit. Ze ligt nooit over iets wat je nodig hebt:
   het plein, de huizen, de zes gebouwen van de gidsen en elk gebouwd doel liggen altijd binnen de vrije cirkel.
 - **Dag en nacht**: een rustige dag-en-nachtcyclus met verlichte ramen en straatlantaarns 's nachts. De zonknop rechtsboven wisselt
@@ -134,7 +138,7 @@ Twee weergaven (knop *Toon de stad* / *Toon de Mist-golem*, of rechtstreeks `dig
 - **Stad**: de klasstad op groot scherm, langzaam draaiend, met klascijfers, gebouwen per wijk, kaartlagen (*Sterk en zwak*, *Wijken*)
   en dag/avond/nacht. Klik op een gebouw voor het doel en het aantal reizigers dat meebouwde.
   Tijdens een raid hangt de Grijze Mist als een vriendelijke storm (met gele ogen) boven de stad; elke treffer doet hem oplichten en krimpen.
-- **Mist-golem**: een grote pixel-Grijze Mist (vriendelijk, niet eng) met HP-balk. HP automatisch (8 per deelnemer) of zelf gekozen.
+- **Mist-golem**: een grote, zachte Grijze Mist (vriendelijk, niet eng) met HP-balk. HP automatisch (8 per deelnemer) of zelf gekozen.
 Bij elke treffer schudt de mist en wordt de lucht lichter; bij 0 HP trekt de mist op. Er worden geen namen getoond en foute antwoorden worden niet eens doorgestuurd.
 
 ## Architectuur
@@ -153,13 +157,19 @@ webapp/
   js/core/store.js           opslaglaag: LocalStore (localStorage) + SupabaseStore (stub)
   js/core/sync.js            live-laag: LocalSync (BroadcastChannel) + SupabaseSync (stub)
   js/core/model.js           missiecatalogus, routes, XP/rangen, doelen per leerling, codes
-  js/city/layout.js          plattegrond: ringwegen, wijken, kavels, huizen, plein (gedeeld door 3D en 2D)
+  js/city/layout.js          plattegrond: ringen, lanen, spoor, wijken, kavels langs de weg, huizen, plein (gedeeld door 3D en 2D)
+  js/city/wegen.js           wegennet als graaf (knopen, takken, overwegen) en valideerStad(): controle van de plattegrond
   js/city/stadmodel.js       van pogingen naar een stad: gebouwen, niveaus, bouwplaatsen, mist, huizen, sterkte
   js/city/modellen.js        low-poly modellen in code (gebouwen per wijk en niveau, gidsgebouwen, huizen, station, trein ...)
   js/city/stad3d.js          de 3D-stad (three.js): licht, dag/nacht, mist, verkeer, bouwanimaties, kaartlagen, camera, tilt-shift
+  js/city/wegen3d.js         wegen, kruispunten met markeringen, zebrapaden, overwegen, lantaarns en auto's die het net volgen
+  js/city/figuren3d.js       gidsen, reizigers en inwoners in de stad (één geometrie, stappen en zwaaien in de shader)
   js/city/stad2d.js          terugvalkaart zonder WebGL (isometrisch canvas, zelfde methodes)
   js/city/stad.js            kiest 3D of 2D, bewaart de kwaliteitskeuze
-  js/game/sprites.js         pixel-lettertype, portretten van de gidsen, avatars (aanmelden, panelen, dashboard)
+  js/figuren/uiterlijk.js    keuzes voor het uiterlijk, kleuren van een reiziger, dakkleur van het huis
+  js/figuren/modellen.js     low-poly 3D-reizigers (alle kapsels en kosmetiek) en de zes gidsen, gedeelde figuurshader
+  js/figuren/portret.js      portretten uit de 3D-modellen (één keer getekend, bewaard als beeld) en het draaiende voorbeeld
+  js/figuren/figuren2d.js    eenvoudige getekende portretten als terugval zonder WebGL
   js/missions/types.js       de 12 oefentypes (data -> UI -> score)
   js/missions/engine.js      missievenster, verbetering, bewaren per doelcode, XP
   js/missions/week1.js       de oefeningen van week 1 (per les-id en per route)
@@ -208,14 +218,26 @@ Ontbreekt een route, dan krijgt de leerling de dichtstbijzijnde route (Taalsleut
 - Mist: de vrije straal groeit van 23 naar 54 eenheden met de klas-XP (`mistDoel` per leerling) en is altijd minstens zo groot als het verste gebouw.
 - Wat een leerling al zag, staat per toestel in `localStorage` (`klets:stad:gezien:<id>`), zodat nieuwe gebouwen sinds het vorige bezoek bij het openen worden opgebouwd.
 
+### Wegen en plattegrond
+- Zes ringwegen rond het plein en vier lanen (op 60, 120, 240 en 300 graden) vormen één samenhangend net. Waar een laan een ring
+  kruist, ligt een X-kruispunt; op de binnenste en de buitenste ring, waar de laan begint en eindigt, een T-kruispunt. Elk kruispunt heeft markeringen en zebrapaden.
+- Het spoor loopt oost-west door de stad; op elke plek waar een ring het spoor kruist, staat een overweg. De auto's wachten als de trein komt.
+- Elke kavel ligt naast een weg, met de voorkant naar die weg en een oprit of stoep ertussen. Ringen worden pas aangelegd als de stad zo
+  ver groeit, en altijd als volledige lus vanuit het bestaande net.
+- `valideerStad()` in `js/city/wegen.js` controleert dat het wegennet samenhangt, dat er geen doodlopende stukken zijn, dat elke
+  spoorkruising een overweg heeft, en dat geen gebouw, huis of gidsgebouw de weg, het spoor of een ander gebouw raakt. De tests voeren
+  die controle uit met de echte afmetingen van de modellen.
+
 ### Prestaties en kwaliteit
 - Gemaakt voor gewone schoollaptops met ingebouwde grafische chip: alle herhaalde dingen (gebouwen, bomen, auto's, lantaarns, mistwolkjes) zijn
-  *instanced meshes*; één tekenopdracht per soort. Ongeveer 80 tekenopdrachten per beeld.
+  *instanced meshes*; één tekenopdracht per soort. Alle figuren samen zijn één tekenopdracht. Ongeveer 90 tekenopdrachten per beeld.
 - Twee standen: **mooi** (schaduwen 2048, tilt-shift en kleurcorrectie, pixelverhouding hoogstens 1,5) en **licht** (schaduwen 1024, geen nabewerking,
   pixelverhouding 1, minder bomen bij een nieuwe start, hoogstens 30 beelden per seconde). Standaard *automatisch*: zakt de beeldsnelheid onder 24,
   dan schakelt de stad zelf naar licht. De knop met de schuifjes rechtsboven wisselt met de hand (wordt per toestel onthouden).
   Ook via de adresbalk: `?kwaliteit=hoog`, `?kwaliteit=laag` of `?kwaliteit=auto`.
-- Zonder WebGL (of met `?webgl=0`) toont de app een eenvoudige isometrische 2D-kaart met dezelfde gebouwen, mist, kaartlagen en knoppen.
+- Zonder WebGL (of met `?webgl=0`) toont de app een eenvoudige isometrische 2D-kaart met hetzelfde wegennet, dezelfde gebouwen, mist,
+  kaartlagen en knoppen, en getekende portretten in plaats van 3D-portretten.
+- Portretten (adviseursbalk, infokaarten, profiel, dashboard, digibord) worden één keer uit het 3D-model getekend en als beeld bewaard.
 - Achter een open venster (missie, codekluis ...) tekent de stad maar één beeld per seconde; in een verborgen tabblad niets.
 
 ## Licenties

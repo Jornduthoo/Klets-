@@ -4,14 +4,16 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { rng, clamp, lerp } from '../core/util.js';
 import {
-  RINGEN, PLEIN_R, DAL_R, BERG_R, SPOOR_HALF, LAAN_HOEKEN, WEG_BREED, MIST_MAX, POORT, TUNNEL_WEST,
-  WIJKEN, KLEUR, PLEIN, kavels, huisKavels, polar, isVrijVoorBoom, hqPositie,
+  RINGEN, PLEIN_R, DAL_R, BERG_R, SPOOR_HALF, SPOOR_SPOREN, SPOOR_X, LAAN_HOEKEN, WEG_HALF, VOORTUIN, MIST_MAX, POORT, TUNNEL_WEST,
+  WIJKEN, KLEUR, PLEIN, kavels, huisKavels, polar, isVrijVoorBoom, hqPositie, stadStraal, lokaalNaarWereld,
 } from './layout.js';
+import { Wegen3D } from './wegen3d.js';
 import {
   doelGebouw, hqGebouw, huisGebouw, stationGebouw, klasmeterGebouw, kluisGebouw, missiebordGebouw, poortGebouw, tunnelGebouw,
-  boomGeo, autoGeo, treinGeo, steigerGeo, bouwplaatsGeo, kraanArmGeo, lampGeo, mensGeo, wolkGeo, vlamGeo, KLEUREN, tint,
+  boomGeo, treinGeo, steigerGeo, bouwplaatsGeo, kraanArmGeo, wolkGeo, vlamGeo, KLEUREN, tint,
 } from './modellen.js';
-import { AVATAR_OPTIES } from '../game/sprites.js';
+import { AVATAR_OPTIES, dakKleur } from '../figuren/uiterlijk.js';
+import { Figuren3D } from './figuren3d.js';
 
 const TAU = Math.PI * 2;
 const V3 = new THREE.Vector3(), M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), S3 = new THREE.Vector3(), E = new THREE.Euler(), K = new THREE.Color();
@@ -154,14 +156,15 @@ export class Stad3D {
     this._bouwLucht();
     this._bouwGrond();
     this._bouwBergen();
-    this._bouwWegen();
+    this.gloedTex = gloedTex();
     this._bouwSpoor();
+    this.wegNet = new Wegen3D(this);
     this._bouwPlein();
     this._bouwHQs();
     this._bouwBomen();
-    this._bouwLampen();
     this._bouwDynamisch();
     this._bouwVerkeer();
+    this.figuren = new Figuren3D(this);
     this._bouwMist();
     this._bouwWolken();
     this._bouwStorm();
@@ -250,9 +253,6 @@ export class Stad3D {
       // spoorbedding
       g.fillStyle = '#a9a196'; g.fillRect(0, toPx(-SPOOR_HALF + 0.55), S, (SPOOR_HALF * 2 - 1.1) * sc);
       for (let i = 0; i < 4000; i++) { g.fillStyle = rr() < .5 ? 'rgba(80,70,60,.25)' : 'rgba(255,255,255,.2)'; g.fillRect(rr() * S, toPx(-SPOOR_HALF + 0.6) + rr() * (SPOOR_HALF * 2 - 1.2) * sc, 2, 2); }
-      // wandelpaadjes in de buitenrand
-      g.strokeStyle = 'rgba(233,220,190,.9)'; g.lineWidth = sc * 0.5;
-      for (let i = 0; i < 6; i++) { const a = (i + 0.5) / 6 * TAU; g.beginPath(); for (let r = RINGEN[RINGEN.length - 1]; r < DAL_R; r += 1) { const p = polar(r, a + Math.sin(r * 0.4) * 0.03); r === RINGEN[RINGEN.length - 1] ? g.moveTo(toPx(p.x), toPx(p.z)) : g.lineTo(toPx(p.x), toPx(p.z)); } g.stroke(); }
     });
     this.grondMat = new THREE.MeshLambertMaterial({ map: tex });
     const grond = new THREE.Mesh(new THREE.CircleGeometry(RAD, 96), this.grondMat);
@@ -296,50 +296,12 @@ export class Stad3D {
     this.scene.add(m);
     this.bergen = m;
   }
-  _bouwWegen() {
-    const tex = wegTex();
-    tex.repeat.set(1, 1);
-    this.wegMat = new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
-    const strook = (punten, breed) => {
-      // punten: [[x,z],...] -> strip met uv langs de lengte
-      const pos = [], uv = [], idx = []; let L = 0;
-      for (let i = 0; i < punten.length; i++) {
-        const [x, z] = punten[i]; const [xn, zn] = punten[Math.min(i + 1, punten.length - 1)]; const [xp, zp] = punten[Math.max(i - 1, 0)];
-        let dx = xn - xp, dz = zn - zp; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-        if (i > 0) L += Math.hypot(x - punten[i - 1][0], z - punten[i - 1][1]);
-        pos.push(x - dz * breed / 2, 0.02, z + dx * breed / 2, x + dz * breed / 2, 0.02, z - dx * breed / 2);
-        uv.push(L / 3, 0, L / 3, 1);
-        if (i > 0) { const b = (i - 1) * 2; idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3); }
-      }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-      g.setIndex(idx); g.computeVertexNormals();
-      // normalen omhoog
-      const n = g.attributes.normal; for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
-      return g;
-    };
-    const BR = WEG_BREED + 0.8; // rijweg + stoepen
-    this.wegen = [];
-    const voeg = (g, R) => { const m = new THREE.Mesh(g, this.wegMat); m.receiveShadow = true; this.scene.add(m); this.wegen.push({ R, m }); };
-    for (const R of RINGEN) { const pts = []; const n = Math.ceil(R * 3); for (let i = 0; i <= n; i++) { const a = i / n * TAU; pts.push([Math.cos(a) * R, Math.sin(a) * R]); } voeg(strook(pts, BR), R); }
-    this.laanMat = this.wegMat.clone(); this.laanMat.polygonOffsetFactor = -2; this.laanMat.polygonOffsetUnits = -4;
-    for (const a of LAAN_HOEKEN) for (let i = 0; i < RINGEN.length - 1; i++) {
-      const pts = []; for (let r = RINGEN[i] + BR / 2; r <= RINGEN[i + 1] - BR / 2 + 0.01; r += 0.5) pts.push([Math.cos(a) * r, Math.sin(a) * r]);
-      const m = new THREE.Mesh(strook(pts, BR * 0.95), this.laanMat); m.receiveShadow = true; this.scene.add(m); this.wegen.push({ R: RINGEN[i + 1], m });
-    }
-  }
   _bouwSpoor() {
     const metaal = new THREE.MeshLambertMaterial({ color: '#8d939e' });
     const L = 2 * (BERG_R + 6);
-    for (const tz of [-0.55, 0.55]) for (const dz of [-0.26, 0.26]) {
+    for (const tz of SPOOR_SPOREN) for (const dz of [-0.26, 0.26]) {
       const r = new THREE.Mesh(new THREE.BoxGeometry(L, 0.07, 0.06), metaal); r.position.set(0, 0.1, tz + dz); r.receiveShadow = true; this.scene.add(r);
     }
-    const n = Math.floor(L / 0.7) * 2;
-    const dw = new THREE.InstancedMesh(new THREE.BoxGeometry(0.18, 0.06, 0.78), new THREE.MeshLambertMaterial({ color: '#7a5f48' }), n);
-    let k = 0;
-    for (const tz of [-0.55, 0.55]) for (let x = -L / 2; x < L / 2 && k < n; x += 0.7) { M4.makeTranslation(x, 0.04, tz); dw.setMatrixAt(k++, M4); }
-    dw.count = k; dw.receiveShadow = true; this.scene.add(dw);
     // tunnels: De Poort (oost) en het westportaal
     const poort = this._mesh(poortGebouw(), 'poort');
     poort.position.set(POORT.x, 0, POORT.z); poort.rotation.y = -Math.PI / 2; this.scene.add(poort);
@@ -435,12 +397,8 @@ export class Stad3D {
     const rr = rng('bomen');
     this.vasteBomen = [];
     const plant = (x, z, s, soort) => this.vasteBomen.push({ x, z, s, soort, y: terreinHoogte(x, z) });
-    for (const a of LAAN_HOEKEN) for (let r = RINGEN[0] + 2.2; r < RINGEN[RINGEN.length - 1] - 1; r += 2.2) {
-      if (RINGEN.some(R => Math.abs(R - r) < 1.4)) continue;
-      for (const side of [-1, 1]) { const p = polar(r, a + side * 1.25 / r); plant(p.x, p.z, 0.75 + rr() * 0.2, 'loof'); }
-    }
     // plein: een paar bomen
-    for (const [x, z] of [[-6.2, 1.6], [6.2, 1.6], [-5.6, 5.5], [5.6, 5.5], [-1.8, 6.4], [1.8, 6.4]]) plant(x, z, 0.75, 'loof');
+    for (const [x, z] of [[-6.2, 2.6], [6.2, 2.6], [-5.2, 5.2], [5.2, 5.2], [-3.1, 6.5], [3.1, 6.5]]) plant(x, z, 0.75, 'loof');
     // buitenrand: bosjes
     const nBos = this.kwaliteit === 'hoog' ? 900 : 450;
     for (let i = 0; i < nBos; i++) {
@@ -478,28 +436,6 @@ export class Stad3D {
     for (const m of [this.loof, this.den]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); }
   }
 
-  _bouwLampen() {
-    const pos = [];
-    for (const R of RINGEN) { const n = Math.floor(TAU * R / 4.6); for (let i = 0; i < n; i++) { const a = i / n * TAU + 0.2; const p = polar(R + WEG_BREED / 2 + 0.25, a); if (Math.abs(p.z) < SPOOR_HALF + 0.4) continue; pos.push({ x: p.x, z: p.z, R, rot: Math.atan2(-Math.cos(a), Math.sin(a)) + Math.PI / 2 }); } }
-    this.lampRingen = pos.map(p => p.R);
-    const paal = new THREE.InstancedMesh(lampGeo(), new THREE.MeshLambertMaterial({ vertexColors: true }), pos.length);
-    this.lampKopMat = new THREE.MeshBasicMaterial({ color: '#777777' });
-    const kop = new THREE.InstancedMesh(new THREE.BoxGeometry(0.16, 0.05, 0.1), this.lampKopMat, pos.length);
-    this.lampGloedMat = new THREE.MeshBasicMaterial({ map: gloedTex(), color: '#ffcf7a', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
-    const gl = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), this.lampGloedMat, pos.length);
-    pos.forEach((p, i) => {
-      E.set(0, p.rot, 0); Q.setFromEuler(E);
-      M4.compose(V3.set(p.x, 0, p.z), Q, S3.set(1, 1, 1)); paal.setMatrixAt(i, M4);
-      const off = new THREE.Vector3(0.14, 0.88, 0).applyQuaternion(Q);
-      M4.compose(V3.set(p.x + off.x, off.y, p.z + off.z), Q, S3.set(1, 1, 1)); kop.setMatrixAt(i, M4);
-      M4.compose(V3.set(p.x + off.x, 0.04, p.z + off.z), Q, S3.set(1.9, 1, 1.9)); gl.setMatrixAt(i, M4);
-    });
-    paal.castShadow = true;
-    this.lampMeshes = [paal, kop, gl];
-    this.scene.add(paal, kop, gl);
-    gl.renderOrder = 2;
-  }
-
   // ---------- gebouwen die met de klas meegroeien ----------
   _bouwDynamisch() {
     const K_ = kavels();
@@ -516,6 +452,9 @@ export class Stad3D {
         this.typeMesh[w.macht + n] = { body, ramen, hoogte: mod.body.userData.hoogte || 1 };
       }
     }
+    // opritten: van de voorgevel tot aan de stoep
+    this.oprit = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.04, 1).translate(0, 0.02, 0), new THREE.MeshLambertMaterial({ color: '#e6e1d6', polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }), 800);
+    this.oprit.count = 0; this.oprit.receiveShadow = true; this.scene.add(this.oprit);
     // contactschaduw onder gebouwen
     this.ctMat = new THREE.MeshBasicMaterial({ map: this.ctTex, transparent: true, depthWrite: false, opacity: 0.9 });
     this.contact = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), this.ctMat, 700);
@@ -588,12 +527,9 @@ export class Stad3D {
       }
     }
     // de stad groeit: enkel de ringwegen die in gebruik zijn, liggen er al
-    let verst = 0; for (const g of model.gebouwen) if (g.slot) verst = Math.max(verst, g.slot.r);
-    const stadR = RINGEN.find(R => R >= verst + 1.2 && R >= RINGEN[2]) ?? RINGEN[RINGEN.length - 1];
+    const stadR = model.stadR ?? stadStraal(model.gebouwen);
     this.stadR = stadR;
-    for (const w of this.wegen) w.m.visible = w.R <= stadR;
-    const nLamp = this.lampRingen.filter(R => R <= stadR).length;
-    for (const m of this.lampMeshes) m.count = nLamp;
+    this.wegNet.zet(stadR);
     // lege kavels: in de stad een parkje (en de eerste paar kavels gemarkeerd), erbuiten bos
     const bezet = new Set(model.gebouwen.map(g => g.slot));
     const extraBomen = [];
@@ -617,6 +553,17 @@ export class Stad3D {
     // lege huiskavels: tuintjes
     const huisBezet = new Set(model.huizen.map(h => h.slot));
     for (const s of huisKavels()) if (!huisBezet.has(s)) { const o = polar(0.4, rb() * TAU); extraBomen.push({ x: s.x + o.x, z: s.z + o.z, s: 0.55 + rb() * 0.3, soort: 'loof' }); }
+    // opritten voor elk bezet perceel (gebouw, bouwplaats, huis, gidsgebouw)
+    let no = 0;
+    const oprit = (s, voor, breed) => {
+      if (no >= this.oprit.instanceMatrix.count) return;
+      const tot = s.d / 2 + VOORTUIN + 0.08, lang = tot - voor, p = lokaalNaarWereld(s, 0, voor + lang / 2);
+      M4.compose(V3.set(p.x, 0, p.z), Q.setFromAxisAngle(YAS, s.rot), S3.set(breed, 1, lang)); this.oprit.setMatrixAt(no++, M4);
+    };
+    for (const g of model.gebouwen) if (g.slot) oprit(g.slot, 1.15, 0.6);
+    for (const h of model.huizen) oprit(h.slot, 0.97, 0.38);
+    for (const w of WIJKEN) oprit(hqPositie(w), 2.4, 1.3);
+    this.oprit.count = no; this.oprit.instanceMatrix.needsUpdate = true; this.oprit.computeBoundingSphere();
     this.contact.count = nc; this.werf.count = nw; this.kraan.count = nw; this.leeg.count = nl;
     for (const m of [this.contact, this.werf, this.kraan, this.leeg]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); }
     for (const tm of Object.values(this.typeMesh)) {
@@ -628,7 +575,7 @@ export class Stad3D {
     for (let i = 0; i < nw; i++) { this.werf.getMatrixAt(i, M4); this.kraanBasis.push(M4.clone()); }
     this._zetBomen(extraBomen);
     this._zetHuizen(model.huizen);
-    this._zetVerkeer(model.mistRadius);
+    this.figuren.zet(model, { inwoners: this.kwaliteit === 'hoog' ? 12 : 6 });
     this.mistDoelR = model.mistRadius;
     if (this.mistR == null) this.mistR = model.mistRadius;
     this.meterDoel = clamp(model.xp / Math.max(1, model.doelXp), 0, 1);
@@ -659,7 +606,7 @@ export class Stad3D {
       const key = h.pid + '|' + dak + '|' + deco.sort().join(',') + '|' + h.slot.x.toFixed(2);
       keep.add(key);
       if (!this.huisCache.has(key)) {
-        const m = this._mesh(huisGebouw(tint(dak, 1.18), deco, h.pid), h.id);
+        const m = this._mesh(huisGebouw(dakKleur(dak), deco, h.pid), h.id);
         m.position.set(h.slot.x, 0, h.slot.z); m.rotation.y = h.slot.rot;
         this.huisGroep.add(m); this.huisCache.set(key, m);
       }
@@ -670,24 +617,6 @@ export class Stad3D {
 
   // ---------- verkeer ----------
   _bouwVerkeer() {
-    const n = this.kwaliteit === 'hoog' ? 90 : 50;
-    this.autos = new THREE.InstancedMesh(autoGeo(), new THREE.MeshLambertMaterial({ vertexColors: true }), n);
-    this.autos.castShadow = true; this.autos.count = 0; this.scene.add(this.autos);
-    this.autoData = [];
-    const kl = ['#e2643e', '#3d8fe0', '#f6c445', '#ffffff', '#38b37a', '#e9578a', '#2d3240', '#9a68e0', '#f0a531', '#c7ced8'];
-    const rr = rng('autos');
-    for (let i = 0; i < n; i++) { this.autoData.push({ ring: 0, a: rr() * TAU, v: (0.9 + rr() * 0.6), dir: rr() < 0.5 ? 1 : -1 }); this.autos.setColorAt(i, K.set(kl[i % kl.length])); }
-    // voetgangers
-    const np = this.kwaliteit === 'hoog' ? 70 : 36;
-    this.mensen = new THREE.InstancedMesh(mensGeo(), new THREE.MeshLambertMaterial({ vertexColors: true }), np);
-    this.mensData = [];
-    const kk = AVATAR_OPTIES.kleren;
-    for (let i = 0; i < np; i++) {
-      const plein = i < np * 0.45;
-      this.mensData.push({ r: plein ? 2 + rr() * 4.8 : (rr() < 0.5 ? RINGEN[0] : RINGEN[1]) + (rr() < .5 ? -1 : 1) * (WEG_BREED / 2 + 0.3), a: rr() * TAU, v: (0.25 + rr() * 0.3) * (rr() < .5 ? 1 : -1), plein, fase: rr() * 10 });
-      this.mensen.setColorAt(i, K.set(kk[i % kk.length]));
-    }
-    this.scene.add(this.mensen);
     // trein
     const tm = treinGeo();
     this.trein = new THREE.Group();
@@ -697,38 +626,7 @@ export class Stad3D {
     this.kiesbaar = this.kiesbaar || []; this.kiesbaar.push(this.trein);
     this.scene.add(this.trein);
   }
-  _zetVerkeer(mistR) {
-    const ringen = RINGEN.filter(R => R <= mistR + 1 && R <= (this.stadR ?? 99));
-    const tot = ringen.reduce((s, R) => s + R, 0);
-    let i = 0;
-    for (const R of ringen) {
-      const n = Math.round(this.autoData.length * R / tot);
-      for (let k = 0; k < n && i < this.autoData.length; k++) this.autoData[i++].ring = R;
-    }
-    this.autos.count = i;
-  }
   _updateVerkeer(dt) {
-    let i = 0;
-    for (const a of this.autoData) {
-      if (i >= this.autos.count) break;
-      a.a += a.dir * a.v * dt / a.ring * 2.2;
-      const lane = a.ring + a.dir * 0.33;
-      const x = Math.cos(a.a) * lane, z = Math.sin(a.a) * lane;
-      const yaw = Math.atan2(-Math.sin(a.a) * a.dir, Math.cos(a.a) * a.dir);
-      M4.compose(V3.set(x, 0.02, z), Q.setFromAxisAngle(YAS, yaw), S3.set(1, 1, 1));
-      this.autos.setMatrixAt(i++, M4);
-    }
-    this.autos.instanceMatrix.needsUpdate = true;
-    let j = 0;
-    for (const m of this.mensData) {
-      m.a += m.v * dt / m.r;
-      const bob = Math.abs(Math.sin(this.t * 7 + m.fase)) * 0.03;
-      const x = Math.cos(m.a) * m.r, z = (m.plein ? 4.3 : 0) + Math.sin(m.a) * m.r * (m.plein ? 0.45 : 1);
-      if (m.plein && z < 2.2) { M4.makeScale(0.0001, 0.0001, 0.0001); }
-      else M4.compose(V3.set(x, 0.05 + bob, z), Q.identity(), S3.set(1, 1, 1));
-      this.mensen.setMatrixAt(j++, M4);
-    }
-    this.mensen.instanceMatrix.needsUpdate = true;
     // trein: 70 s per rondje, heen op het noordspoor, terug op het zuidspoor
     const T = this.t % 70, rit = (t0, van, naar, versn) => { const u = clamp((T - t0) / 11, 0, 1); return van + (naar - van) * (versn ? u * u : 1 - (1 - u) * (1 - u)); };
     let x, z, rot, zicht = true;
@@ -742,6 +640,7 @@ export class Stad3D {
     else { zicht = false; x = -78; z = -0.55; rot = 0; }
     this.trein.visible = zicht; this.trein.position.set(x, 0.1, z); this.trein.rotation.y = rot;
     this.treinStaat = (T >= 11 && T < 20) || (T >= 46 && T < 55) ? 'staat' : zicht ? 'rijdt' : 'weg';
+    this.wegNet.tick(dt, this.t, { x, zicht, rijdt: this.treinStaat === 'rijdt', half: 5.6 + (this.treinStaat === 'rijdt' ? 6 : 0) });
   }
 
   // ---------- de Grijze Mist ----------
@@ -851,7 +750,7 @@ export class Stad3D {
     for (const o of this.kiesbaar || []) o.traverse(m => { if (m.isMesh && (m.material === this.matLijf || m.material === this.matData)) m.material = data ? this.matData : this.matLijf; });
     this.grondMat.color.set(data ? '#4f5d7c' : '#ffffff');
     this.boomMat.color.set(data ? '#7d8aa6' : '#ffffff');
-    this.wegMat.color.set(data ? '#b9c3d6' : '#ffffff'); this.laanMat.color.set(data ? '#b9c3d6' : '#ffffff');
+    this.wegNet.setData(data); this.figuren.setData(data);
     this.bergen.material.color.set(data ? '#7d8aa6' : '#ffffff');
     let n = 0;
     const m = this.model;
@@ -910,9 +809,8 @@ export class Stad3D {
     // ramen, lampen, vuur
     this.raamU.uNacht.value = clamp((1 - L) * 1.15 + goud * 0.15, 0, 1);
     this.raamU.uDag.value.copy(c('#7fa6cc', '#a9cdec', 0.5)).lerp(new THREE.Color('#f0b98a'), goud * 0.4);
-    this.lampGloedMat.opacity = clamp(1 - L * 1.3, 0, 1) * 0.5;
+    this.wegNet.setNacht(L);
     this.kavelMat.color.copy(c('#6f7c99', '#ffffff', L));
-    this.lampKopMat.color.copy(c('#8a8f99', '#ffe2a0', clamp(1 - L * 1.3, 0, 1)));
     for (const m of this.mistLagen) m.uniforms.uKleur.value.copy(c('#5c628a', '#dfe0ee', L)).lerp(new THREE.Color('#f2c6b3'), goud * 0.3);
     this.puffMat.color.copy(c('#6b7096', '#e6e7f2', L));
     this.wolkMat.color.copy(c('#4a5278', '#ffffff', L)).lerp(new THREE.Color('#ffc59e'), goud * 0.5);
@@ -1191,6 +1089,7 @@ export class Stad3D {
     this.boomU.uT.value = this.t;
     this._updateLicht(dt);
     this._updateVerkeer(dt);
+    this.figuren.tick(dt, this.t);
     this._updateMist(dt);
     this._updateStorm(dt);
     this._updateAnims(dt);
