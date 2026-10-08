@@ -81,6 +81,7 @@ export function kleurenVan(look = DEFAULT_LOOK) {
   let jas = O.kleren[look.kleren] ?? O.kleren[3];
   if (uit.kleur === 'kleur-goud') jas = '#e8c040';
   if (uit.kleur === 'kleur-nacht') jas = '#2b3a78';
+  if (uit.kleur === 'kleur-speurneus') jas = '#7a4bb0';
   if (uit.jas === 'regenjas') jas = '#f2c216';
   if (uit.jas === 'zwemvest') jas = '#f2762b';
   const stijl = look.haar || 'kort';

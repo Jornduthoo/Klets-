@@ -12,6 +12,7 @@ import {
   SLUISDEUREN, oeverPunten, VEST_R, POORTEN, MUUR_R, WAL_R0, WAL_R1,
 } from './layout.js';
 import { Water3D, Waterval, Fontein } from './water3d.js';
+import { Geheimen3D } from './geheimen3d.js';
 import { Weer3D, Blaadjes, SEIZOEN_BLAD, SEIZOEN_BLADVOL } from './weer3d.js';
 import {
   belfortGebouw, windvaanGeo, weerbordGeo, provinciaalhofGebouw, olvkerkGebouw, molenGebouw, wiekenGeo,
@@ -182,6 +183,8 @@ export class Stad3D {
     this._bouwDynamisch();
     this._bouwVerkeer();
     this.figuren = new Figuren3D(this);
+    // de drie geheimen (alleen in de stad van de reizigers, niet op het digibord)
+    if (!opts.digibord && opts.geheimen !== false) this.geheimen = new Geheimen3D(this);
     this._bouwMist();
     this._bouwWolken();
     this._bouwStorm();
@@ -425,6 +428,7 @@ export class Stad3D {
       m.body.setMatrixAt(i, M4); m.ramen.setMatrixAt(i, M4);
     }
     for (const m of markt) for (const im of [m.body, m.ramen]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+    this.marktHuizen = markt.map(m => m.body);
     // terrasjes voor de gildehuizen
     this.terrassen = TERRASSEN.length ? [terrasGeo('#c8403c'), terrasGeo('#d9a32a'), terrasGeo('#2f6f9f')].map((g, k) => {
       const lijst = TERRASSEN.filter((_, i) => i % 3 === k);
@@ -502,7 +506,8 @@ export class Stad3D {
     for (let i = 0; i < 8; i++) { const a = i / 8 * TAU + 0.39; zet(this.banken, nb++, fx + Math.cos(a) * 3.05, fz + Math.sin(a) * 3.05, Math.atan2(-Math.cos(a), -Math.sin(a)) + Math.PI); }
     // langs de kaaien: bloembakken en bankjes die naar het water kijken (niet op een weg, een brug of tegen een huis)
     const huizen = waterhuizen();
-    const vrij = (x, z) => isVrijVoorBoom(x, z, 0.25) || (inWater(x, z, 1.4) && !inWater(x, z, 0.5) && Math.hypot(x, z) > PLEIN_R + 1 && !huizen.some(h => Math.hypot(h.x - x, h.z - z) < 1.3) && RINGEN.every(R => Math.abs(Math.hypot(x, z) - R) > WEG_HALF + 0.3) && LAAN_HOEKEN.every(l => Math.abs(Math.sin(Math.atan2(z, x) - l)) * Math.hypot(x, z) > WEG_HALF + 0.3 || Math.cos(Math.atan2(z, x) - l) < 0));
+    const opPlek = (x, z) => Object.values(PLEKKEN).some(p => Math.abs(x - p.x) < Math.max(p.w, p.d) / 2 + 0.6 && Math.abs(z - p.z) < Math.max(p.w, p.d) / 2 + 0.6);
+    const vrij = (x, z) => isVrijVoorBoom(x, z, 0.25) || (!opPlek(x, z) && inWater(x, z, 1.4) && !inWater(x, z, 0.5) && Math.hypot(x, z) > PLEIN_R + 1 && !huizen.some(h => Math.hypot(h.x - x, h.z - z) < 1.3) && RINGEN.every(R => Math.abs(Math.hypot(x, z) - R) > WEG_HALF + 0.3) && LAAN_HOEKEN.every(l => Math.abs(Math.sin(Math.atan2(z, x) - l)) * Math.hypot(x, z) > WEG_HALF + 0.3 || Math.cos(Math.atan2(z, x) - l) < 0));
     const rb = rng('kaaimeubel');
     for (const w of WATERS) {
       if (w.id === 'zee' || w.id === 'haven' || w.id === 'sluiskolk') continue;
@@ -586,7 +591,7 @@ export class Stad3D {
   _bouwWater() {
     this.water3d = new Water3D(this);
     const wv = PLEKKEN.waterval;
-    this.waterval = new Waterval(this, { x: wv.x, z: wv.z - wv.d / 2 + 0.1, hoogte: 2.4, breedte: 2.8, rot: -Math.PI / 2 });
+    this.waterval = new Waterval(this, { x: wv.x, z: wv.z, rot: wv.rot });
   }
 
   /** Het echte weer en seizoen van Brugge. */
@@ -1274,6 +1279,7 @@ export class Stad3D {
     if (!id) return null;
     if (id.startsWith('plek:')) { const p = PLEKKEN[id.slice(5)]; return p ? { x: p.x, y: p.labelY ?? 3, z: p.z } : null; }
     if (id.startsWith('water:')) { const w = WATERS.find(w => 'water:' + w.id === id || 'water:' + w.zone === id); if (!w) return null; const m = waterMidden(w); return { x: m.x, y: 1, z: m.z }; }
+    if (id.startsWith('geheim:')) return this.geheimen?.positie(id) || null;
     if (id.startsWith('gids:')) { const h = this.hqs[id.slice(5)]; return h ? { x: h.p.x, y: 3, z: h.p.z } : null; }
     if (id === 'station') return { x: 0, y: 3, z: -2 };
     if (id === 'klasmeter') return { x: PLEIN.klasmeter.x, y: 3, z: PLEIN.klasmeter.z };
@@ -1315,7 +1321,7 @@ export class Stad3D {
   selecteer(id) {
     this.selectie = id;
     const p = this.positieVan(id);
-    this.selRing.visible = !!p && !id?.startsWith('gids:') && id !== 'poort';
+    this.selRing.visible = !!p && !id?.startsWith('gids:') && !id?.startsWith('geheim:') && id !== 'poort';
     if (p) { this.selRing.position.set(p.x, 0.1, p.z); const s = id === 'station' ? 4.2 : id?.startsWith('huis:') ? 0.75 : 1; this.selRing.scale.setScalar(s); }
   }
 
@@ -1396,6 +1402,7 @@ export class Stad3D {
     const helderFontein = this.water3d?.helder('fontein') ?? 0;
     this.fontein?.tick(dt, this.t, helderFontein);
     this.waterval?.tick(dt, this.t, helderFontein);
+    this.geheimen?.tick(dt, this.t);
     this.blaadjes?.tick(dt, this.t, this.seizoen === 'herfst' ? 0.8 + w.wind * 0.2 : 0, { x: w.windX, z: w.windZ });
     // molenwieken en windvaan volgen de echte wind
     const snelheid = 0.25 + (w.wind || 0) * 2.6;
@@ -1417,7 +1424,8 @@ export class Stad3D {
     }
   }
 
-  pause(on) { this.pauze = !!on; if (!on) this._last = performance.now(); }
+  // diep = helemaal niet meer tekenen (bv. tijdens een spelletje: dat krijgt dan alle rekenkracht)
+  pause(on, diep = false) { this.pauze = !!on; this.diepePauze = !!on && !!diep; if (!on) this._last = performance.now(); }
 
   _resize() {
     const w = Math.max(1, this.c.clientWidth), h = Math.max(1, this.c.clientHeight);
@@ -1435,7 +1443,7 @@ export class Stad3D {
     const dt = Math.min(0.25, Math.max(0, (now - this._last) / 1000)); this._last = now;
     if (document.hidden) return;
     // gepauzeerd (venster open): af en toe een beeld, zodat de stad achter het venster zichtbaar blijft
-    if (this.pauze) { if (this._gerenderd && now - this._pauzeBeeld < 1000) return; this._pauzeBeeld = now; }
+    if (this.pauze) { if (this._gerenderd && (this.diepePauze || now - this._pauzeBeeld < 1000)) return; this._pauzeBeeld = now; }
     this._gerenderd = true;
     this.t += this.pauze ? 0 : dt;
     // camera dempen

@@ -585,6 +585,7 @@ const UITRUSTING = {
   schepnet: { naam: 'Schepnet met loep', slot: 'hand', uitleg: 'Geheime code van week 3.' },
   maankompas: { naam: 'Maankompas', slot: 'nek', uitleg: 'Geheime code van week 4.' },
   goudnet: { naam: 'Gouden schepnet', slot: 'hand', uitleg: 'Geheime code van week 5.' },
+  'kleur-speurneus': { naam: 'Paarse speurneusjas', slot: 'kleur', uitleg: 'Voor wie de drie geheimen van Zwinvliet vond.' },
 };
 
 // de geheime codes staan in het Expeditieboek (een per week)

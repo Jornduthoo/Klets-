@@ -21,6 +21,8 @@ import { icoon } from './iconen.js';
 import { runMission, gidsPortret } from '../missions/engine.js';
 import { renderItem } from '../missions/types.js';
 import { raidItem } from '../missions/raidbank.js';
+import { openSpel } from '../spelletjes/spelkader.js';
+import { SPELLEN, GEHEIMEN, BELONING, geheimenVan } from '../spelletjes/geheimen.js';
 
 const store = createStore();
 const sync = createSync('klas');
@@ -202,7 +204,8 @@ async function enterWorld() {
   const legende = h('div', { class: 'legende', id: 'legende', hidden: true });
   const balk = h('nav', { class: 'stad-balk', 'aria-label': 'Werkbalk' });
   const cam = h('div', { class: 'cam-knoppen', 'aria-label': 'Camera' });
-  app.append(h('div', { class: 'stad-wrap' }, view, top, adviseurs, ballon, info, legende, balk, cam, h('div', { id: 'raid-banner', class: 'raid-banner', hidden: true })));
+  const geheimChip = h('button', { type: 'button', class: 'geheim-chip', id: 'geheim-chip', hidden: true, onclick: () => openGeheimenLijst() });
+  app.append(h('div', { class: 'stad-wrap' }, view, top, geheimChip, adviseurs, ballon, info, legende, balk, cam, h('div', { id: 'raid-banner', class: 'raid-banner', hidden: true })));
   bouwTopbalk(top); bouwAdviseurs(adviseurs); bouwWerkbalk(balk); bouwCamKnoppen(cam);
 
   S.stad = await maakStad(view, {
@@ -339,7 +342,7 @@ function updateHud() {
   $('#hud-thema').textContent = THEMA.naam;
   const sm = $('#marker-stad'); if (sm) sm.textContent = stadNaam();
   updateKwaliteitKnop(); updateTijdKnop(); updateWeerWijzer();
-  updateBadges();
+  updateBadges(); updateGeheimChip();
 }
 const fmtGetal = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 async function updateBadges() {
@@ -400,6 +403,7 @@ function kiesInStad(id) {
   if (id === 'poort') { sluitInfo(); return openPoort(); }
   if (id === 'trein') { sluitInfo(); return openVerhaal(); }
   if (id === 'klasmeter' || String(id).startsWith('water:')) { sluitInfo(); return openWater(); }
+  if (String(id).startsWith('geheim:')) { sluitInfo(); return openGeheim(id.slice(7)); }
   toonInfo(id);
 }
 function sluitInfo() { const k = $('#info-kaart'); if (k) { k.hidden = true; k.innerHTML = ''; } S.stad?.selecteer(null); }
@@ -514,6 +518,73 @@ function showIntro() {
       h('li', {}, 'Je hebt je eigen huis in de Reizigerswijk. Versier het met codes uit je Logboek.')),
     h('p', { class: 'tip' }, `Deze week: ${w.titel}.`));
   add(pan.foot, h('button', { class: 'btn groot primair', type: 'button', onclick: async () => { pan.close(); const p = await store.getPupil(S.pupil.id); if (p) { p.gezien = [...(p.gezien || []), 'intro-' + THEMA.id]; await store.savePupil(p); S.pupil = p; } setTimeout(() => adviseurPraat(), 800); } }, 'Aan de slag!'));
+}
+
+// ---------- de geheimen van de stad (easter eggs met een minispelletje) ----------
+/** Het knopje "Geheimen 1/3" verschijnt pas als je er een vond. */
+function updateGeheimChip() {
+  const el = $('#geheim-chip'); if (!el || !S.pupil) return;
+  const n = geheimenVan(S.pupil).gevonden.length;
+  el.hidden = n === 0;
+  el.innerHTML = '';
+  el.append(h('span', { class: 'geheim-ico', 'aria-hidden': 'true', html: SVG_LOEP }), h('span', {}, `Geheimen ${n}/${GEHEIMEN.length}`));
+  el.title = n === GEHEIMEN.length ? 'Je vond alle geheimen!' : 'Er zijn nog geheimen verstopt in de stad.';
+  el.setAttribute('aria-label', `Geheimen: ${n} van de ${GEHEIMEN.length} gevonden`);
+}
+const SVG_LOEP = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/><path d="M8 9.5a2.6 2.6 0 012.5-1.8" stroke-width="1.6"/></svg>';
+
+/** Een geheim werd aangeklikt in de stad: tellen (de eerste keer), een klein feestje en het spelletje. */
+async function openGeheim(id) {
+  const geheim = GEHEIMEN.find(x => x.id === id); if (!geheim) return;
+  const spel = SPELLEN[geheim.spel]; if (!spel || document.querySelector('.spel-overlay')) return;
+  let p = S.pupil;
+  if (!p.leerkracht) p = (await store.getPupil(p.id)) || p;
+  const gh = geheimenVan(p);
+  const nieuw = !gh.gevonden.includes(id);
+  let beloning = null;
+  if (nieuw) {
+    gh.gevonden.push(id);
+    p.geheimen = gh;
+    if (gh.gevonden.length === GEHEIMEN.length && !(p.kosmetiek || []).includes(BELONING)) {
+      p.kosmetiek = [...(p.kosmetiek || []), BELONING];
+      beloning = `Alle geheimen gevonden! Je krijgt de ${UITRUSTING[BELONING]?.naam || 'speurneusjas'}. Trek hem aan in de Codekluis.`;
+    }
+    if (!p.leerkracht) { try { await store.savePupil(p); } catch { /* opslag vol: het spel werkt toch */ } }
+    S.pupil = p;
+    updateGeheimChip();
+    blip('code');
+  }
+  sluitInfo();
+  $('#ballon')?.setAttribute('hidden', '');
+  S.stad?.pause(true, true);   // het spel krijgt alle rekenkracht
+  openSpel(spel, {
+    gevonden: nieuw ? { nieuw: true, aantal: gh.gevonden.length, totaal: GEHEIMEN.length, beloning } : null,
+    best: gh.best[spel.id] || 0,
+    onScore: async (score) => {
+      const q = S.pupil.leerkracht ? S.pupil : ((await store.getPupil(S.pupil.id)) || S.pupil);
+      const g2 = geheimenVan(q);
+      if (!(score > (g2.best[spel.id] || 0))) return false;
+      g2.best[spel.id] = score; q.geheimen = g2;
+      if (!q.leerkracht) { try { await store.savePupil(q); } catch { /* opslag vol */ } }
+      S.pupil = q;
+      return true;
+    },
+    onSluit: () => { if (!document.querySelector('.overlay')) { S.stad?.pause(false); $('#stad canvas')?.focus(); } },
+  });
+}
+/** Overzicht van de gevonden geheimen: opnieuw spelen, je beste score, en een tip voor wat nog verstopt zit. */
+function openGeheimenLijst() {
+  const gh = geheimenVan(S.pupil);
+  const pan = panel(`De geheimen van ${THEMA.stad || stadNaam()}`, 'geheimen');
+  const gevonden = GEHEIMEN.filter(g => gh.gevonden.includes(g.id)), rest = GEHEIMEN.filter(g => !gh.gevonden.includes(g.id));
+  add(pan.body,
+    h('p', {}, rest.length ? `Je vond ${gevonden.length} van de ${GEHEIMEN.length} geheimen. Kijk goed rond in de stad!` : 'Je vond alle geheimen! Speel de spelletjes zo vaak je wil.'),
+    h('ul', { class: 'geheimen-lijst' }, ...gevonden.map(g => {
+      const spel = SPELLEN[g.spel], best = gh.best[spel.id] || 0;
+      return h('li', { style: { '--k': spel.kleur } }, h('div', { class: 'gl-tekst' }, h('b', {}, spel.titel), h('small', {}, g.naam + (best ? ` - beste score: ${best} ${spel.eenheid}` : ''))),
+        h('button', { type: 'button', class: 'btn primair klein', 'data-geheim': g.id, onclick: () => { pan.close(); openGeheim(g.id); } }, 'Speel'));
+    })),
+    rest.length ? h('p', { class: 'tip' }, 'Tip: ' + rest[0].hint) : null);
 }
 
 // ---------- panelen ----------

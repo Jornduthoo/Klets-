@@ -293,3 +293,50 @@ body.in-aanmelden { background: linear-gradient(180deg, #6db7f0 0%, #b9def8 46%,
 .film-balk .stip { flex: 1; background: #dde5ef; border-radius: 4px; height: 8px; display: block; }
 .film-balk .stip.nu { background: #1f8be0; }
 .film-balk .stip.gezien { background: #35e08f; }
+
+/* ---------- de geheimen van de stad en hun minispelletjes ---------- */
+.geheim-chip { position: absolute; left: 12px; top: 86px; z-index: 5; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 9px; border-radius: 999px; border: 1px solid var(--s-rand);
+  background: linear-gradient(#fff7e0, #ffe7a8); color: #6a4a10; font-weight: 700; font-size: .82em; box-shadow: var(--s-schaduw); cursor: pointer; animation: chipIn .5s ease-out; }
+.geheim-chip:hover { background: #fff3cf; }
+.geheim-ico { display: inline-grid; place-items: center; }
+@keyframes chipIn { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-width: 720px) { .geheim-chip { top: auto; bottom: 146px; left: 8px; } }
+.geheimen-lijst { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 8px; }
+.geheimen-lijst li { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #c6d4e6; border-left: 8px solid var(--k); border-radius: 12px; padding: 8px 10px; }
+.gl-tekst { flex: 1; display: grid; }
+.gl-tekst small { color: var(--zacht); }
+
+.spel-overlay { z-index: 60; padding: 10px; }
+.in-stad .spel-overlay { backdrop-filter: none; background: rgba(14, 28, 58, .6); }   /* geen vervaging: die kost bij elk spelbeeld veel rekenwerk */
+.spel-kader { --k: #1f8be0; width: min(1000px, 100%, calc((100vh - 90px) * 1.6 + 20px)); background: #fff6e3; border-radius: 18px; box-shadow: 0 18px 60px rgba(10, 24, 60, .5); overflow: hidden; display: flex; flex-direction: column; }
+.spel-kop { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: linear-gradient(180deg, color-mix(in srgb, var(--k) 80%, #fff), var(--k)); color: #fff; }
+.spel-kop h2 { flex: 1; margin: 0; font-size: 1.2em; text-shadow: 0 1px 2px rgba(0, 0, 0, .3); }
+.spel-kop .rond.klein { width: 42px; height: 42px; }
+.spel-geluid.aan { color: #fff; }
+.spel-scherm { position: relative; aspect-ratio: 16 / 10; background: #f7e9c8; }
+.spel-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: pointer; outline: none; }
+.spel-laag { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; text-align: center; overflow: hidden; }
+.spel-laag[hidden] { display: none; }
+.spel-titel { margin: 0; font-size: clamp(1.5em, 4vw, 2.3em); color: #3b2a20; text-shadow: 0 2px 0 #fff, 0 0 18px #fff; }
+.spel-uitleg { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.spel-uitleg li { display: flex; align-items: center; gap: 6px; background: rgba(255, 255, 255, .92); border: 2px solid #3b2a20; border-radius: 14px; padding: 4px 12px 4px 6px; font-weight: 700; color: #3b2a20; }
+.spel-ico { display: block; }
+.spel-toetsen { display: inline-flex; gap: 3px; padding-left: 4px; }
+.spel-toetsen kbd { min-width: 28px; padding: 2px 6px; border: 2px solid #3b2a20; border-bottom-width: 4px; border-radius: 7px; background: #fff; font: 700 .9em var(--font); color: #3b2a20; }
+.spel-best { margin: 0; font-weight: 700; color: #3b2a20; background: rgba(255, 255, 255, .8); border-radius: 999px; padding: 2px 14px; }
+.spel-start { font-size: 1.35em !important; padding: .5em 2.2em !important; }
+.spel-feest { display: grid; gap: 0; background: linear-gradient(#ffe27a, #f5b52a); border: 3px solid #3b2a20; border-radius: 16px; padding: 6px 26px; color: #3b2a20; animation: feest .6s cubic-bezier(.3, 1.6, .5, 1); box-shadow: 0 6px 0 rgba(59, 42, 32, .25); }
+.spel-feest b { font-size: 1.5em; }
+.spel-beloning { margin: 0; max-width: 560px; background: #efe4ff; border: 2px solid #7a4bb0; border-radius: 12px; padding: 6px 12px; font-weight: 700; color: #4a2a78; }
+@keyframes feest { from { transform: scale(.3) rotate(-8deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.confetti { position: absolute; inset: 0; pointer-events: none; }
+.confetti i { position: absolute; top: -20px; left: var(--x); width: 10px; height: 16px; background: var(--k); border-radius: 3px; animation: valt 2.6s calc(var(--i) * 60ms) ease-in forwards; }
+@keyframes valt { from { transform: translateY(0) rotate(0); opacity: 1; } to { transform: translateY(640px) rotate(720deg); opacity: 0; } }
+.spel-eindtekst { margin: 0; font-size: 1.3em; font-weight: 800; color: #3b2a20; background: rgba(255, 255, 255, .9); border-radius: 14px; padding: 6px 16px; }
+.spel-score { display: flex; align-items: center; gap: 10px; background: #fff; border: 3px solid #3b2a20; border-radius: 20px; padding: 6px 22px; color: #3b2a20; }
+.spel-score b { font-size: 3em; line-height: 1; }
+.spel-score span { font-size: 1.2em; font-weight: 700; }
+.spel-record { margin: 0; font-weight: 800; font-size: 1.2em; color: #3b2a20; background: linear-gradient(#ffe27a, #f5b52a); border: 2px solid #3b2a20; border-radius: 999px; padding: 2px 16px; animation: feest .5s ease-out; }
+.spel-knoppen { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.spel-laag.einde { background: rgba(255, 246, 227, .55); }
+@media (prefers-reduced-motion: reduce) { .confetti { display: none; } .spel-feest, .spel-record, .geheim-chip { animation: none; } }

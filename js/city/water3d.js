@@ -6,7 +6,7 @@
 // kiest per zone de helderheid: 0 = dik bruin slijk, 1 = helder blauw water. De helderheid komt uit js/city/water.js.
 import * as THREE from '../../vendor/three.module.min.js';
 import { rng, clamp, lerp } from '../core/util.js';
-import { WATERS, KADE, BERG_R, WEG_HALF, WATER_Y, VEST_R, inWater, oeverPunten, waterhuizen } from './layout.js';
+import { WATERS, KADE, BERG_R, WEG_HALF, WATER_Y, VEST_R, PLEKKEN, inWater, oeverPunten, waterhuizen } from './layout.js';
 import { bruggen } from './wegen.js';
 import { Bouwer } from './modellen.js';
 import { bootGeo, dierGeo, golfGeo, slijkvlekGeo, kaaiGeo, kaaitrapGeo } from './brugge.js';
@@ -228,7 +228,8 @@ export class Water3D {
     this.kade = inst;
     // kaaitrappen: hier en daar een trapje naar het water (niet onder een huis of een brug)
     const huizen = waterhuizen();
-    const vrij = (p) => !huizen.some(h => Math.hypot(h.x - p.x, h.z - p.z) < 1.4);
+    const wv = PLEKKEN.waterval;
+    const vrij = (p) => !huizen.some(h => Math.hypot(h.x - p.x, h.z - p.z) < 1.4) && Math.hypot(wv.x - p.x, wv.z - p.z) > 4.5;
     const kies = [];
     const rr = rng('trappen');
     for (const p of stukken) {
@@ -484,63 +485,283 @@ export class Water3D {
   get gemiddeld() { const v = Object.values(this.zoneHelder); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0; }
 }
 
+// ---------- de waterval en de watermolen ----------
+// Een stenen trapwaterval aan de Zuidvest, zoals de oude spuien en watermolens langs de Brugse vesten: het water komt
+// uit een overwelfde bron in de wal, stroomt over drie brede treden van blauwe hardsteen tussen bakstenen wangen en valt
+// schuimend in de vest. Een houten goot leidt een deel van het water naar het rad van de watermolen ernaast.
+// Het water is een eigen shader (stromende strepen, schuim aan elke val); helder = blauw, vuil = bruin-groen.
+const VAL_VS = `
+attribute float aVal; attribute float aSchuim;
+varying vec2 vUv; varying float vVal; varying float vSchuim;
+#include <fog_pars_vertex>
+void main(){
+  vUv = uv; vVal = aVal; vSchuim = aSchuim;
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mv;
+  #ifdef USE_FOG
+    vFogDepth = - mv.z;
+  #endif
+}`;
+const VAL_FS = `
+uniform float uT; uniform float uHelder; uniform float uNacht; uniform vec3 uLucht;
+varying vec2 vUv; varying float vVal; varying float vSchuim;
+#include <fog_pars_fragment>
+float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1,0)), u.x), mix(h21(i + vec2(0,1)), h21(i + vec2(1,1)), u.x), u.y); }
+void main(){
+  float val = vVal;                                   // 0 = stroomt over een trede, 1 = valt
+  float snel = mix(0.7, 2.2, val);
+  float y = vUv.y - uT * snel;
+  float n1 = vn(vec2(vUv.x * mix(10.0, 16.0, val), y * mix(3.2, 1.3, val)));
+  float n2 = vn(vec2(vUv.x * 4.0 + 3.0, y * mix(5.0, 2.6, val) + 7.0));
+  float n3 = vn(vec2(vUv.x * 22.0, y * 6.0 - uT * 0.5));
+  float str = n1 * 0.6 + n2 * 0.4;
+  // kleuren in lineaire ruimte: helder = turkoois-blauw, vuil = bruin-groen
+  vec3 diep = mix(vec3(0.045, 0.05, 0.016), vec3(0.02, 0.24, 0.44), uHelder);
+  vec3 licht = mix(vec3(0.15, 0.16, 0.05), vec3(0.28, 0.62, 0.82), uHelder);
+  vec3 c = mix(diep, licht, smoothstep(0.2, 0.85, str));
+  // de lucht spiegelt in het vlakke water
+  c = mix(c, uLucht * mix(vec3(0.7, 0.68, 0.45), vec3(1.0), uHelder), (1.0 - val) * 0.18 * smoothstep(0.4, 0.8, n2));
+  // schuim: onderaan elke val en net erna op de trede, en witte strepen in het vallende water
+  vec3 schuimK = mix(vec3(0.60, 0.56, 0.38), vec3(0.93, 0.97, 1.0), uHelder);
+  float sch = smoothstep(0.45, 0.85, vSchuim + (n3 - 0.5) * 0.55 + (n2 - 0.5) * 0.3);
+  float streep = smoothstep(0.58, 0.78, n1) * val * mix(0.55, 0.85, uHelder);
+  c = mix(c, schuimK, clamp(sch + streep, 0.0, 1.0));
+  // glinstertjes in de zon (alleen proper water)
+  c *= mix(1.0, 0.32, uNacht);
+  float a = mix(0.93, 0.86 + 0.12 * str, val);
+  a = max(a, sch * 0.98);
+  float rand = smoothstep(0.0, 0.05, vUv.x) * smoothstep(1.0, 0.95, vUv.x);
+  gl_FragColor = vec4(c, a * mix(0.55, 1.0, rand));
+  #include <colorspace_fragment>
+  #include <fog_fragment>
+}`;
+// schuimkring in de vest waar het water invalt
+const KRING_FS = `
+uniform float uT; uniform float uHelder; uniform float uNacht;
+varying vec2 vUv;
+#include <fog_pars_fragment>
+float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1,0)), u.x), mix(h21(i + vec2(0,1)), h21(i + vec2(1,1)), u.x), u.y); }
+void main(){
+  vec2 p = vUv * 2.0 - 1.0;
+  float r = length(p), a = atan(p.y, p.x);
+  float ring = fract(r * 2.2 - uT * 0.55);
+  float n = vn(vec2(a * 3.0, r * 6.0 - uT * 1.4));
+  float s = smoothstep(0.55, 0.95, n + (1.0 - r) * 0.55) * smoothstep(1.0, 0.55, r);
+  s = max(s, smoothstep(0.75, 0.95, ring) * smoothstep(1.0, 0.3, r) * 0.6 * n);
+  vec3 k = mix(vec3(0.58, 0.54, 0.36), vec3(0.93, 0.97, 1.0), uHelder) * mix(1.0, 0.35, uNacht);
+  gl_FragColor = vec4(k, s * 0.85);
+  #include <colorspace_fragment>
+  #include <fog_fragment>
+}`;
+
 export class Waterval {
-  constructor(stad, { x = 9.2, z = 36.0, hoogte = 2.4, breedte = 3.2, rot = 0 } = {}) {
+  /** opts: { x, z, rot } = de plek (lokaal -z wijst naar het water) */
+  constructor(stad, { x = 5.36, z = 33.07, rot = 0 } = {}) {
     this.stad = stad;
     const groep = this.groep = new THREE.Group();
     groep.position.set(x, 0, z); groep.rotation.y = rot;
-    // rots
-    // rotsblokken in plaats van een gladde doos: een ruwe stapel met mos bovenop, het water valt over de voorste rand
-    const rr = rng('rots'), rotsGeo = new THREE.IcosahedronGeometry(1, 0);
-    const steen = new THREE.MeshLambertMaterial({ color: '#958c7c', flatShading: true }), steen2 = new THREE.MeshLambertMaterial({ color: '#7f786b', flatShading: true });
-    const mos = new THREE.MeshLambertMaterial({ color: '#6d8a45', flatShading: true });
-    const blok = (mat, x, y, z, sx, sy, sz) => { const m = new THREE.Mesh(rotsGeo, mat); m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.rotation.set(rr() * 0.6, rr() * TAU, rr() * 0.6); m.castShadow = true; m.receiveShadow = true; groep.add(m); };
-    const zb = (breedte + 1.6) / 2;
-    for (let i = 0; i < 5; i++) {
-      const z = -zb + (i + 0.5) / 5 * 2 * zb;
-      blok(i % 2 ? steen : steen2, 0.95 + rr() * 0.2, hoogte * 0.45, z, 1.05, hoogte * 0.62, 0.75 + rr() * 0.2);   // de wand
-      blok(steen2, -0.2 + rr() * 0.3, -0.25, z + (rr() - 0.5) * 0.4, 0.45 + rr() * 0.2, 0.35, 0.45 + rr() * 0.2);  // brokken in het water
+    // de maten (lokaal): de trapwaterval links, het rad in het midden, de molen rechts
+    // van west naar oost: de molen, het rad, de trapwaterval. Alles blijft laag, zodat je van de stadskant
+    // (de camera kijkt meestal vanuit het zuidoosten) over de borstwering heen de treden en het schuim ziet.
+    const ox = -0.15;
+    const W0 = ox + 0.15, W1 = ox + 1.8;                    // de breedte van het stromende water
+    const top = 1.0, treden = [[-0.15, 0.7], [-0.8, 0.4], [-1.5, 0.1]];  // [voorrand z, waterhoogte] van elke trede
+    const zBron = 1.3, zEind = -1.5;                         // de bron achteraan, de laatste val in de vest
+    const randZ = [0.5, -0.15, -0.8, zEind];                 // waar het water over de rand valt
+    const peil = [top, 0.7, 0.4, 0.1, WATER_Y];              // waterhoogte boven en na elke val
+    this.maat = { W0, W1, randZ, peil, ox };
+
+    // ---- steen, baksteen en hout (één geometrie, met sneeuw en schaduw zoals de rest van de stad) ----
+    const b = new Bouwer('waterval');
+    const hard = '#8e95a0', hard2 = '#a7adb6', bak = '#a85a40', bak2 = '#9a5038', kap = '#c9b48e', hout = '#7a5636', hout2 = '#5e4230';
+    // het rad en de goot (eerst de maten: de achterwand loopt tot boven de goot)
+    const xr = W0 - 0.6, zr = -2.1, yr = 0.14, R = 0.68;           // het rad (as langs x), tussen de molen en de waterval
+    this.rad = { x: xr, z: zr, y: yr, R };
+    const xm = (W0 + W1) / 2, xa = xr - 0.3, xb = W1 + 0.3;
+    // de bron: het water ligt open in een stenen bak; erachter een bakstenen waterpoort met een boog
+    b.box(W1 - W0, top - 0.04 + 0.6, zBron - 0.5, xm, -0.6, (zBron + 0.5) / 2, hard);
+    b.box(W0 - 0.3 - xa, top - 0.3 + 0.6, zBron - 0.5, (xa + W0 - 0.3) / 2, -0.6, (zBron + 0.5) / 2, bak2);     // de voet onder de goot
+    // een lage borstwering achteraan (zo zie je ook van de stadskant over de waterval heen), met drie spuigaten
+    const wandTop = top + 0.2;
+    b.box(xb - xa, wandTop + 0.6, 0.26, (xa + xb) / 2, -0.6, zBron + 0.1, bak2);
+    b.box(xb - xa + 0.06, 0.07, 0.32, (xa + xb) / 2, wandTop, zBron + 0.1, kap);
+    for (const dx of [-0.42, 0, 0.42]) {
+      b.box(0.22, 0.14, 0.04, xm + dx, top - 0.01, zBron - 0.04, '#2a2522');
+      b.torus(0.12, 0.03, xm + dx, top + 0.13, zBron - 0.05, kap, [0, 0, 0], 8, Math.PI);
     }
-    for (let i = 0; i < 4; i++) blok(mos, 1.1 + rr() * 0.3, hoogte * 0.98, -zb * 0.8 + i / 3 * zb * 1.6, 0.85, 0.22, 0.6);
-    // vallend water
-    this.uT = { value: 0 };
-    this.uHelder = { value: 0 };
-    const mat = new THREE.ShaderMaterial({
-      uniforms: { uT: this.uT, uHelder: this.uHelder },
-      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: `uniform float uT; uniform float uHelder; varying vec2 vUv;
-        float h21(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y); }
-        void main(){
-          float str = h21(floor(vec2(vUv.x * 22.0, (vUv.y + uT * 0.9) * 10.0)));
-          vec3 helder = vec3(0.78, 0.92, 0.99), slijk = vec3(0.42, 0.44, 0.3);
-          vec3 c = mix(slijk, helder, uHelder) * (0.72 + 0.4 * str);
-          gl_FragColor = vec4(c, 0.86);
-          #include <colorspace_fragment>
-        }`,
-      transparent: true, side: THREE.DoubleSide, depthWrite: false,
+    b.box(0.22, 0.14, 0.04, xr, top - 0.14, zBron - 0.04, '#2a2522');                               // het gootgat
+    // een stenen bank op de wal en een lantaarn bij de molen
+    b.box(0.07, 0.9, 0.07, W1 + 0.45, 0.06, zBron - 0.2, '#2d2a28').box(0.16, 0.18, 0.16, W1 + 0.45, 0.94, zBron - 0.2, '#2d2a28');
+    // de treden van blauwe hardsteen
+    let zAchter = 0.5;
+    treden.forEach(([zv, h], i) => {
+      b.box(W1 - W0, h + 0.6 - 0.04, zAchter - zv, xm, -0.6, (zAchter + zv) / 2, i % 2 ? hard : hard2);
+      b.box(W1 - W0 + 0.02, 0.06, 0.08, xm, h - 0.06, zv + 0.03, '#c3c7cc');                     // de lichte rand
+      zAchter = zv;
     });
-    const valH = hoogte - WATER_Y;
-    const val = new THREE.Mesh(new THREE.PlaneGeometry(breedte, valH), mat);
-    val.position.set(-0.7, WATER_Y + valH / 2 - 0.2, 0); val.rotation.y = -Math.PI / 2;
-    groep.add(val);
-    // nevel
-    this.nevel = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ color: '#eef8ff', transparent: true, opacity: 0.55, depthWrite: false }), 18);
+    void zEind;
+    // lage stenen wangen links en rechts, die mee naar beneden trappen (laag, zodat je het water goed ziet)
+    for (const [xw, w] of [[W0 - 0.12, 0.24], [W1 + 0.12, 0.24]]) {
+      let za = zBron - 0.1;
+      for (const [zv, h] of [[0.5, top], ...treden]) {
+        const hoog = h + 0.1;
+        b.box(w, hoog + 0.6, za - zv, xw, -0.6, (za + zv) / 2, bak);
+        b.box(w + 0.06, 0.06, za - zv + 0.02, xw, hoog, (za + zv) / 2, '#c3c7cc');
+        za = zv;
+      }
+    }
+    // de goot naar het rad: een houten bak op palen, vanaf de bron naar boven het rad
+    const g0 = { z: zBron - 0.05, y: top - 0.05 }, g1 = { z: zr + 0.22, y: yr + R + 0.08 };
+    const gl = Math.hypot(g1.z - g0.z, g1.y - g0.y), ga = Math.atan2(g0.y - g1.y, g0.z - g1.z);
+    const gz = (g0.z + g1.z) / 2, gy = (g0.y + g1.y) / 2;
+    b.blok(0.34, 0.05, gl, xr, gy - 0.1, gz, hout, [ga, 0, 0]);
+    for (const sx of [-1, 1]) b.blok(0.04, 0.16, gl, xr + sx * 0.17, gy - 0.1, gz, hout2, [ga, 0, 0]);
+    for (const t of [0.3, 0.7]) { const pz = g0.z + (g1.z - g0.z) * t, py = g0.y + (g1.y - g0.y) * t; b.box(0.06, py - 0.12 + 0.6, 0.06, xr - 0.15, -0.6, pz, hout2).box(0.06, py - 0.12 + 0.6, 0.06, xr + 0.15, -0.6, pz, hout2); }
+    // de watermolen: een bakstenen huis met trapgevels, half op een stenen voet in de vest
+    const mx = xr - 0.95, mz = -1.0;
+    b.box(1.36, 0.66, 2.2, mx, -0.6, -1.25, '#a3a8ae');                                           // de voet in het water
+    b.box(1.42, 0.05, 2.26, mx, 0.04, -1.25, kap);
+    b.middeleeuwsHuis({ x: mx, z: mz, w: 1.2, d: 2.1, h: 1.25, y: 0.08, muur: '#b4553c', dak: '#8a5444', gevel: 'trap', luik: '#3f6b4a', treden: 3, schouw: true, deur: false });
+    b.box(0.3, 0.5, 0.04, mx, 0.08, mz + 1.06, '#5a3a26');   // deur aan de kant van de wal
+    b.cil(0.07, 0.07, 0.45, xr + 0.05, yr, zr, hout2, 8, [0, 0, Math.PI / 2]);                    // de as door de muur
+    b.box(0.06, 0.06, 0.4, mx - 0.6, 0.95, mz + 0.6, '#2d2a28').box(0.03, 0.26, 0.26, mx - 0.63, 0.66, mz + 0.72, '#f2c94c');   // uithangbord (aan de westkant)
+    const m = b.bouw();
+    const lijf = new THREE.Mesh(m.body, stad._lijfMat()); lijf.castShadow = true; lijf.receiveShadow = true;
+    groep.add(lijf);
+    if (m.ramen) groep.add(new THREE.Mesh(m.ramen, stad._raamMat()));
+
+    // ---- het waterrad (draait; geen sneeuw, het is nat) ----
+    const rb = new Bouwer('waterrad'); rb.ao = false;
+    const L = (R - 0.06) * 2, spaak = (a, sz) => rb.blok(0.05, L, 0.05, Math.sin(a) * L / 2, -Math.cos(a) * L / 2, sz, hout, [0, 0, a]);
+    for (const sz of [-0.13, 0.13]) {
+      rb.torus(R - 0.04, 0.035, 0, 0, sz, hout2, [0, 0, 0], 18);
+      for (let i = 0; i < 4; i++) spaak(i * Math.PI / 4, sz);
+    }
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * TAU, c = Math.cos(a), s = Math.sin(a);
+      rb.blok(0.05, 0.26, 0.32, c * (R - 0.24), s * (R - 0.24), 0, i % 2 ? '#6a4a30' : hout, [0, 0, a - Math.PI / 2]);   // schoepen
+    }
+    rb.cil(0.1, 0.1, 0.36, 0, 0, -0.18, hout2, 8, [Math.PI / 2, 0, 0]);
+    const radGeo = rb.bouw().body.center();
+    this.radMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const draai = new THREE.Group(); draai.position.set(xr, yr, zr); draai.rotation.y = Math.PI / 2;
+    this.wiel = new THREE.Mesh(radGeo, this.radMat); this.wiel.castShadow = true;
+    draai.add(this.wiel); groep.add(draai);
+
+    // ---- het stromende water (één geometrie, één tekenopdracht) ----
+    const P = [], UV = [], VAL = [], SCH = [], IDX = [];
+    // een vlak stuk: van z0 naar z1 op hoogte y, v loopt mee met de stroom (in wereldeenheden)
+    const vlak = (xa, xb, z0, z1, y, v0, schuim0 = 0, schuim1 = 0) => {
+      const i = P.length / 3, nx = 4;
+      for (let k = 0; k <= nx; k++) for (const [zz, s, vv] of [[z0, schuim0, v0], [z1, schuim1, v0 + (z0 - z1)]]) {
+        P.push(xa + (xb - xa) * k / nx, y, zz); UV.push(k / nx, vv); VAL.push(0); SCH.push(s);
+      }
+      for (let k = 0; k < nx; k++) { const a = i + k * 2; IDX.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      return v0 + (z0 - z1);
+    };
+    // een val: van de rand (zr, yTop) met een boogje naar beneden (yBot)
+    const val = (xa, xb, z, yTop, yBot, v0, uit = 0.16) => {
+      const i = P.length / 3, nx = 4, ny = 6;
+      let v = v0, vorige = null;
+      for (let j = 0; j <= ny; j++) {
+        const t = j / ny, yy = yTop - (yTop - yBot) * t * t * 0.15 - (yTop - yBot) * t * 0.85, zz = z - uit * Math.sqrt(t) - 0.02;
+        if (vorige) v += Math.hypot(yy - vorige.y, zz - vorige.z);
+        vorige = { y: yy, z: zz };
+        for (let k = 0; k <= nx; k++) { P.push(xa + (xb - xa) * k / nx, yy, zz); UV.push(k / nx, v); VAL.push(Math.min(1, t * 4)); SCH.push(t > 0.7 ? (t - 0.7) / 0.3 : t < 0.12 ? 0.25 * (1 - t / 0.12) : 0); }
+      }
+      for (let j = 0; j < ny; j++) for (let k = 0; k < nx; k++) { const a = i + j * (nx + 1) + k, c = a + nx + 1; IDX.push(a, c, a + 1, a + 1, c, c + 1); }
+      return v;
+    };
+    let v = 0;
+    v = vlak(W0, W1, zBron - 0.06, 0.5, top, v, 0.55, 0);
+    for (let i = 0; i < 4; i++) {
+      v = val(W0, W1, randZ[i], peil[i], peil[i + 1] + 0.01, v, i === 3 ? 0.24 : 0.14);
+      if (i < 3) v = vlak(W0, W1, randZ[i] - 0.15, randZ[i + 1], peil[i + 1], v, 0.95, 0.05);
+    }
+    // de goot en het straaltje op het rad
+    const g0x = xr - 0.13, g1x = xr + 0.13;
+    { const i = P.length / 3; const pts = [[g0.z, g0.y + 0.03], [g1.z, g1.y + 0.03]];
+      pts.forEach(([zz, yy], j) => { for (const [xx, k] of [[g0x, 0], [g1x, 1]]) { P.push(xx, yy - 0.1 + 0.04, zz); UV.push(k, j * gl); VAL.push(0.4); SCH.push(0); } });
+      IDX.push(i, i + 2, i + 1, i + 1, i + 2, i + 3); }
+    val(g0x + 0.03, g1x - 0.03, g1.z, g1.y - 0.04, yr + R * 0.55, gl, 0.05);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(UV, 2));
+    geo.setAttribute('aVal', new THREE.Float32BufferAttribute(VAL, 1));
+    geo.setAttribute('aSchuim', new THREE.Float32BufferAttribute(SCH, 1));
+    geo.setIndex(IDX);
+    this.uT = { value: 0 }; this.uHelder = { value: 0 }; this.uNacht = { value: 0 }; this.uLucht = { value: new THREE.Color('#d6ecfb') };
+    const uni = () => THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {}]);
+    const valMat = new THREE.ShaderMaterial({ uniforms: uni(), vertexShader: VAL_VS, fragmentShader: VAL_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: true });
+    Object.assign(valMat.uniforms, { uT: this.uT, uHelder: this.uHelder, uNacht: this.uNacht, uLucht: this.uLucht });
+    const water = new THREE.Mesh(geo, valMat); water.renderOrder = 2;
+    groep.add(water);
+    // schuimkring in de vest
+    const kringMat = new THREE.ShaderMaterial({ uniforms: uni(), vertexShader: 'varying vec2 vUv;\n#include <fog_pars_vertex>\nvoid main(){ vUv = uv; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * mv;\n#ifdef USE_FOG\n vFogDepth = -mv.z;\n#endif\n}', fragmentShader: KRING_FS, transparent: true, depthWrite: false, fog: true });
+    Object.assign(kringMat.uniforms, { uT: this.uT, uHelder: this.uHelder, uNacht: this.uNacht });
+    const kring = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), kringMat);
+    kring.position.set(xm, WATER_Y + 0.025, zEind - 0.75); kring.scale.set(2.6, 1, 1.7); kring.renderOrder = 1;
+    const kring2 = new THREE.Mesh(kring.geometry, kringMat); kring2.position.set(xr, WATER_Y + 0.025, zr - 0.15); kring2.scale.set(0.9, 1, 1.5); kring2.renderOrder = 1;
+    groep.add(kring, kring2);
+
+    // ---- schuimbellen en nevel (instanced) ----
+    this.schuimMat = new THREE.MeshLambertMaterial({ color: '#ffffff', transparent: true, opacity: 0.85, depthWrite: false });
+    this.nevelMat = new THREE.MeshLambertMaterial({ color: '#f4fbff', transparent: true, opacity: 0.16, depthWrite: false });
+    const nS = 46, nN = 16;
+    this.schuim = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), this.schuimMat, nS);
+    this.nevel = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), this.nevelMat, nN);
+    this.schuim.frustumCulled = this.nevel.frustumCulled = false;
+    this.schuim.renderOrder = 3; this.nevel.renderOrder = 4;
+    const r = rng('schuim');
+    this.schuimData = [];
+    for (let i = 0; i < nS; i++) {
+      const k = i < 30 ? Math.floor(i / 10) : i < 40 ? 3 : 4;      // 0-2: onder een trede, 3: in de vest, 4: onder het rad
+      const xx = k === 4 ? xr + (r() - 0.5) * 0.3 : W0 + 0.08 + r() * (W1 - W0 - 0.16);
+      this.schuimData.push({ k, x: xx, f: r(), s: 0.04 + r() * 0.05, v: 0.5 + r() * 0.7 });
+    }
     this.nevelData = [];
-    const r = rng('nevel');
-    for (let i = 0; i < 18; i++) this.nevelData.push({ a: r() * TAU, r: r() * 1.3, y: r() * 0.7, s: 0.2 + r() * 0.35, f: r() * 9 });
-    groep.add(this.nevel);
+    for (let i = 0; i < nN; i++) this.nevelData.push({ x: W0 + r() * (W1 - W0), dz: r() * 0.9, f: r(), s: 0.12 + r() * 0.16 });
+    groep.add(this.schuim, this.nevel);
     stad.scene.add(groep);
+    this.hoek = 0;
   }
+
   tick(dt, t, helder = 0) {
     this.uT.value = t; this.uHelder.value = helder;
+    const st = this.stad;
+    this.uNacht.value = st.nacht || 0;
+    if (st.luchtMat) this.uLucht.value.copy(st.luchtMat.uniforms.uHor.value);
+    // het rad draait (sneller als het water proper is en vlot stroomt)
+    this.hoek += dt * (0.55 + helder * 0.5);
+    this.wiel.rotation.z = this.hoek;
+    // schuim: bellen die opborrelen onderaan elke val en meedrijven
+    const { randZ, peil } = this.maat, rad = this.rad;
     let i = 0;
+    for (const p of this.schuimData) {
+      const u = (t * p.v * 0.6 + p.f) % 1;
+      let x = p.x, y, z, s = p.s * Math.sin(u * Math.PI) * (0.8 + helder * 0.4);
+      if (p.k < 3) { z = randZ[p.k] - 0.2 - u * 0.4; y = peil[p.k + 1] + 0.02 + Math.sin(u * 9 + p.f * 6) * 0.015; }
+      else if (p.k === 3) { z = randZ[3] - 0.3 - u * 1.1; y = WATER_Y + 0.02; x += Math.sin(u * 4 + p.f * 9) * 0.25; s *= 1.15; }
+      else { z = rad.z - 0.25 - u * 0.7; y = WATER_Y + 0.03; s *= 1.3; }
+      M4.compose(V3.set(x, y, z), Q.identity(), S3.set(s * 1.4, s * 0.45, s * 1.4));
+      this.schuim.setMatrixAt(i++, M4);
+    }
+    this.schuim.instanceMatrix.needsUpdate = true;
+    i = 0;
     for (const p of this.nevelData) {
-      const s = p.s * (0.7 + 0.5 * Math.sin(t * 1.6 + p.f)) * (0.5 + helder * 0.8);
-      M4.compose(V3.set(-1.0 - Math.cos(p.a) * p.r * 0.4, WATER_Y + p.y + ((t * 0.5 + p.f) % 1) * 0.6, Math.sin(p.a) * p.r), Q.identity(), S3.set(s, s, s));
+      const u = (t * 0.22 + p.f) % 1;
+      const s = p.s * (0.4 + u * 0.9) * (1 - u * u) * (0.75 + helder * 0.4);
+      M4.compose(V3.set(p.x + Math.sin(t * 0.7 + p.f * 9) * 0.1, WATER_Y + 0.1 + u * 0.9, randZ[3] - 0.25 - p.dz * 0.8), Q.identity(), S3.set(Math.max(0.001, s), Math.max(0.001, s * 0.6), Math.max(0.001, s)));
       this.nevel.setMatrixAt(i++, M4);
     }
     this.nevel.instanceMatrix.needsUpdate = true;
-    void dt;
+    // kleur van het schuim en de nevel: wit als het water proper is, vuilgeel als het vol slijk zit
+    this.schuimMat.color.setRGB(0.80 + helder * 0.2, 0.76 + helder * 0.24, 0.6 + helder * 0.4).multiplyScalar(1 - (st.nacht || 0) * 0.6);
+    this.nevelMat.color.setRGB(0.86 + helder * 0.12, 0.85 + helder * 0.13, 0.78 + helder * 0.2).multiplyScalar(1 - (st.nacht || 0) * 0.6);
   }
 }
 

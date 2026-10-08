@@ -92,7 +92,12 @@ Alle paden zijn relatief, dus de app werkt ook in een submap. `.nojekyll` zorgt 
   via de sluis een verbinding met de haven en de zee; bakstenen kaaimuren met kaaitrappen, trapgevelhuizen pal aan het water
   (de Rozenhoedkaai), kleine stenen boogbruggen waar een weg over het water gaat, rondvaartboten, zwanen en eenden.
   De Markt is een open plein met het Belfort, een fontein, terrassen en een kring trapgevels. Het station ligt aan de zuidrand.
-  Verder de haven met kranen en vuurtoren, de sluis van Zeebrugge, een waterval en in december een kerstmarkt met schaatsbaan.
+  Verder de haven met kranen en vuurtoren, de sluis van Zeebrugge, een getrapte stenen waterval met een watermolen
+  (het rad draait, het water is een shader: bruin-groen als het vuil is, blauw als de klas het proper kreeg) en in december een kerstmarkt met schaatsbaan.
+- **Drie geheimen** (enkel in de 3D-stad van de reizigers): een zwarte kat op een dak aan de westkant van de Markt, een gouden kikker
+  op een waterlelie bij de brug over de noordelijke rei, en Rat Remi die vist aan de binnenkant van de stadsmuur vlak bij de Ezelpoort.
+  Ze fonkelen af en toe. Wie er een aanklikt, speelt een kort spelletje (Klokkenluider van het Belfort, Reienrace, Rat Remi vist).
+  Geen XP: de knop "Geheimen n/3" houdt bij wat je vond en je beste score; wie alle drie vindt, krijgt een paarse jas in de Codekluis.
 - **Het echte weer van Brugge** (Open-Meteo, 51.21 N 3.22 O, elk kwartier vernieuwd en lokaal bewaard): regen, motregen, sneeuw met sneeuwdek,
   mist, onweer, wind die de bomen, de vlaggen en de windvaan op het Belfort meeneemt, en zon of wolken die het licht kleuren.
   Het weerknopje rechtsboven toont de temperatuur en de windstreek. Zonder internet (of achter een schoolfirewall) komt er één waarschuwing in de console
@@ -186,7 +191,9 @@ Twee weergaven (knop *Toon de stad* / *Toon De Slijkkraak*, of rechtstreeks `dig
   js/city/modellen.js        low-poly modellen in code (gebouwen, gidsgebouwen, huizen, station, stoomtrein, Belfort, middeleeuwse huizen met trapgevel of vakwerk ...)
   js/city/stad3d.js          de 3D-stad: licht, dag/nacht, mist, verkeer, bouwanimaties, kaartlagen, camera, tilt-shift
   js/city/wegen3d.js         kasseiwegen, kruispunten, overwegen, lantaarns, paardenkarren, koetsen, ruiters, handkarren en wandelaars
-  js/city/water3d.js         de reien, kaaien, bruggen, de waterval, boten, zwanen en de slijklaag (shader)
+  js/city/water3d.js         de reien, kaaien, bruggen, de waterval met watermolen, boten, zwanen en de slijklaag (shader)
+  js/city/geheimen3d.js      de drie verstopte geheimen in de stad (kat, kikker, rat) en hun fonkeling
+  js/spelletjes/             de spelletjes achter de geheimen: spelkader.js (venster, start- en eindscherm), teken.js, klokken.js, reienrace.js, visser.js
   js/city/weer3d.js          regen, sneeuw met sneeuwdek, mist, onweer, wind, seizoenskleuren en vallende blaadjes
   js/city/figuren3d.js       gidsen, reizigers en inwoners (één geometrie; elke gids wacht op zijn eigen manier)
   js/city/stad2d.js          terugvalkaart zonder WebGL (isometrisch canvas, zelfde methodes, met water en weer)

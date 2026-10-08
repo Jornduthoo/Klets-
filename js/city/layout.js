@@ -271,14 +271,15 @@ export function oeverPunten(w, stap = 0.7) {
 // Een plek is een rechthoek (x, z, rot, w, d). rot = 0 betekent: de voorkant kijkt naar +z (zuid).
 // labelY: hoe hoog het naamkaartje boven de plek hangt (zodat kaartjes op de Markt niet overlappen).
 const naarMidden = (x, z) => Math.atan2(-x, -z);
-const _wl = polar(33.65, graden(104));
+const _wl = polar(33.65, graden(104)), _wv = polar(33.5, graden(80.8));
 export const PLEKKEN = {
   belfort: { x: 0, z: -4.4, rot: 0, w: 4.0, d: 2.6, naam: 'Belfort en Hallen', labelY: 11.4 },
   hallen: { x: 4.7, z: -2.7, rot: naarMidden(4.7, -2.7), w: 2.6, d: 2.2, naam: 'De Hallen (Werkplaats)', labelY: 3.9 },
   provinciaalhof: { x: -4.7, z: -2.7, rot: naarMidden(-4.7, -2.7), w: 2.2, d: 2.2, naam: 'Het gotische huis op de Markt', labelY: 4.2 },
   scheepswerf: { x: 3.4, z: -19.7, rot: -Math.PI / 2, w: 4.0, d: 2.8, naam: 'Scheepswerf aan de Groenerei', labelY: 3.2 },
   waterlabo: { x: _wl.x, z: _wl.z, rot: naarMidden(_wl.x, _wl.z), w: 3.4, d: 2.2, schaal: 0.9, naam: 'Waterlabo aan het Minnewater', labelY: 3.4 },
-  waterval: { x: 5.4, z: 33.3, rot: 0, w: 3.6, d: 1.6, naam: 'De waterval van het Minnewater', labelY: 3.4 },
+  // de waterval: een stenen trapwaterval met een watermolen ernaast, op de wal aan de Zuidvest (lokaal -z = naar het water)
+  waterval: { ..._wv, rot: naarBuiten(graden(80.8)), w: 4.6, d: 2.4, naam: 'De waterval en de watermolen', labelY: 3.0 },
   sluis: { x: 4.1, z: -55.4, rot: -Math.PI / 2, w: 3.4, d: 2.6, naam: 'Sluis van Zeebrugge', labelY: 3.6 },
   vuurtoren: { x: 14.5, z: -61.0, rot: 0, w: 2.4, d: 2.4, naam: 'Vuurtoren aan de havenmond', labelY: 5.6 },
   olvkerk: { x: -5.0, z: 19.8, rot: 0, w: 2.6, d: 3.6, naam: 'Onze-Lieve-Vrouwekerk', labelY: 11 },
