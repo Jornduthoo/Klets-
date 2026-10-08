@@ -385,6 +385,7 @@ export class Wegen3D {
     }
     // karren, koetsen, ruiters en wandelaars (ook in een bocht)
     for (const sd of Object.values(this.soorten)) sd.n = 0;
+    const v3 = this.stad.verhaal3d, nat = v3 && v3.nu.vloed > 0.01 ? (x, z) => v3.natOp(x, z) : null;
     for (const a of this.autoData) {
       let x, z, hx, hz;
       if (a.bocht) {
@@ -403,6 +404,8 @@ export class Wegen3D {
         const p = rijPunt(a.tak, s, a.dir, RIJSTROOK);
         x = p.x; z = p.z; hx = p.dx; hz = p.dz;
       }
+      // bij hoogwater blijven karren en wandelaars uit de natte straten
+      if (nat && nat(x, z)) continue;
       // voorkant = +z; wandelaars en paarden deinen een beetje mee met hun stappen
       const sd = this.soorten[a.soort];
       const stap = a.soort.startsWith('wandel') || a.soort === 'handkar' ? Math.abs(Math.sin(t * 7 + a.f)) * 0.03 : a.soort === 'ruiter' ? Math.abs(Math.sin(t * 6 + a.f)) * 0.025 : 0;

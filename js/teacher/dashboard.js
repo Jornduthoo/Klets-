@@ -8,6 +8,7 @@ import { MACHTEN, MACHT, ROUTES, ROUTE, GIDSEN, DAGEN, METHODE } from '../config
 import { THEMAS, themaVoor } from '../../data/themas.js';
 import { themaCatalog, doelStats, doelStatus, rangVoor, klasXP, codeIndex, beloningVoor, machtVanCode, klasstadGebouwen, uitrustingLijst } from '../core/model.js';
 import { waterStand, waterTekst } from '../city/water.js';
+import { VERHAAL_STAPPEN, heeftVerhaal } from '../city/verhaal.js';
 import { avatarBeeld } from '../figuren/portret.js';
 import { AVATAR_OPTIES, willekeurigeLook } from '../figuren/uiterlijk.js';
 
@@ -311,6 +312,11 @@ function labos(main) {
       h('div', { class: 'tabel-scroll' }, h('table', { class: 'dash-tabel' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Week'), h('th', {}, 'Labo en gebouw'), h('th', {}, 'Gids'), h('th', {}, 'Werkbanken'), h('th', {}, 'Geslaagd'), h('th', {}, 'Klaar'), h('th', {}, 'Wat herstelt er'))),
         h('tbody', {}, ...rows)))),
+    heeftVerhaal(THEMA) ? h('section', { class: 'dash-blok' }, h('h2', {}, `Het verhaal in ${stadNaam()}`),
+      h('p', {}, 'De stad toont het verhaal vanzelf: in week 1 staat alles onder water en zit De Slijkkraak in de reien. Elk labo dat de klas haalt, laat het water zakken en een slijkarm verdwijnen. Week per week verandert er iets (zie de weekplanning). Wilt u een stap vooraf bekijken? Open een voorbeeld (er verandert niets aan de echte voortgang):'),
+      h('div', { class: 'knoppenrij verhaal-voorbeelden' }, ...VERHAAL_STAPPEN.map(([code, naam]) =>
+        h('a', { class: 'btn klein', href: `index.html?leerkracht=1&verhaal=${code}`, target: '_blank', rel: 'noopener', title: naam }, code))),
+      h('p', {}, h('small', {}, 'Op het digibord: digibord.html?view=stad&verhaal=w3start. Tijd testen: &uur=22:30 (nacht) of &datum=2026-12-18.'))) : null,
     h('section', { class: 'dash-blok' }, h('h2', {}, 'Uitrusting van dit thema'),
       h('ul', {}, ...Object.entries(UITRUSTING).filter(([, v]) => v.thema).map(([id, v]) => h('li', {}, h('b', {}, v.naam), ` (${v.slot}) - ${v.uitleg || ''}`, h('small', {}, ' ' + id))))));
 }
@@ -356,7 +362,7 @@ function instellingen(main) {
         h('label', {}, 'Thema'), h('select', { id: 'set-thema2', onchange: (e) => saveSettings({ huidigThema: e.target.value }) }, ...THEMAS.map(t => h('option', { value: t.id, selected: s.huidigThema === t.id, disabled: !t.data }, `${t.nr}. ${t.naam} - ${t.stad}${t.data ? '' : ' (binnenkort)'}`))),
         h('label', {}, 'Huidige week'), h('select', { id: 'set-week', onchange: (e) => saveSettings({ huidigeWeek: +e.target.value }) }, ...THEMA.weken.map(w => h('option', { value: w.week, selected: s.huidigeWeek === w.week }, `week ${w.week}: ${w.titel}`))),
         h('label', {}, 'Alles open'), h('label', { class: 'schakel' }, h('input', { type: 'checkbox', checked: s.allesOpen, onchange: (e) => saveSettings({ allesOpen: e.target.checked }) }), ' ook latere weken openzetten voor reizigers'),
-        h('label', {}, 'Dag en nacht'), h('select', { onchange: (e) => saveSettings({ dagNacht: e.target.value }) }, ...[['auto', 'automatisch: volgt het echte weer en de klasmeter'], ['nacht', 'altijd nacht'], ['dag', 'altijd dag']].map(([v, t]) => h('option', { value: v, selected: s.dagNacht === v }, t))),
+        h('label', {}, 'Dag en nacht'), h('select', { onchange: (e) => saveSettings({ dagNacht: e.target.value }) }, ...[['auto', 'automatisch: de echte tijd in Brugge (dag, schemering en nacht)'], ['nacht', 'altijd nacht'], ['dag', 'altijd dag']].map(([v, t]) => h('option', { value: v, selected: s.dagNacht === v }, t))),
         h('label', {}, 'Klasmeter'), h('span', {}, h('input', { type: 'number', class: 'invoer kort', min: 100, step: 100, value: s.mistDoel, onchange: (e) => saveSettings({ mistDoel: Math.max(100, +e.target.value || 1200) }) }), ' XP per reiziger voor een volle klasmeter'),
         h('label', {}, 'Naam van de stad'), h('span', {}, h('input', { type: 'text', class: 'invoer', value: s.klasNaam, maxlength: 40, placeholder: THEMA.stad, onchange: (e) => saveSettings({ klasNaam: e.target.value.trim() }) }), ` leeg = ${THEMA.stad}`),
         h('label', {}, 'PIN'), h('span', { class: 'code-rij' }, pin, h('button', { class: 'btn', type: 'button', onclick: () => { if (!/^\d{4,8}$/.test(pin.value)) return toast('Een PIN heeft 4 tot 8 cijfers.'); saveSettings({ pin: pin.value }); } }, 'PIN bewaren')))),

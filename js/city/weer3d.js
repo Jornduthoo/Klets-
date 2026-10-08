@@ -150,6 +150,8 @@ export class Weer3D {
   _wilSneeuwdek() {
     const w = this.weer || {};
     const koud = (w.temp ?? 10) < 2.5;
+    // het sneeuwt en het is koud, of er ligt volgens de weerdienst echt sneeuw (snow_depth in meter)
+    if ((w.sneeuwdek ?? 0) >= 0.01 && (w.temp ?? 10) < 5) return 1;
     return this.s.sneeuw > 0.1 && koud ? 1 : (koud && this.seizoen === 'winter' ? this.sneeuwdek : 0);
   }
 

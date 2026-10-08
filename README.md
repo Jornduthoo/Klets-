@@ -49,7 +49,10 @@ en klik bovenaan op *Open de stad als leerkracht*.
 | Adres | Wat |
 |---|---|
 | `?weer=regen` | ook `sneeuw`, `zon`, `mist`, `storm`, `bewolkt`, `fout` (doet alsof er geen internet is) |
-| `?datum=2026-12-18` | doet alsof het die dag is: seizoen, kerstmarkt, dag of nacht |
+| `?datum=2026-12-18` | doet alsof het die dag is: seizoen, kerstmarkt, dag of nacht (standaard 12:00 in Brugge) |
+| `?uur=22:30` | doet alsof het dat uur is in Brugge (nacht, schemering, dag); te combineren met `?datum=` |
+| `?verhaal=w3start` | toont een stap van het verhaal in de stad zonder de echte voortgang te wijzigen: `w1start`, `w1labo1`, `w1labo2`, `w1raid`, ... `w4raid`, `w5start`, `w5labo1`, `w5labo2`, `eindbaas`, `gewonnen` (ook `start`, `week3`, `raid`, `einde`) |
+| `?voortgang=0.5` | hetzelfde als een getal van 0 (begin) tot 1 (gewonnen) |
 | `?webgl=0` | de 2D-terugvalkaart |
 | `?kwaliteit=hoog\|laag\|auto` | grafische kwaliteit |
 | `?leerkracht=1` | de stad als leerkracht (alles open) |
@@ -196,7 +199,11 @@ Twee weergaven (knop *Toon de stad* / *Toon De Slijkkraak*, of rechtstreeks `dig
   js/spelletjes/             de spelletjes achter de geheimen: spelkader.js (venster, start- en eindscherm), teken.js, klokken.js, reienrace.js, visser.js
   js/city/weer3d.js          regen, sneeuw met sneeuwdek, mist, onweer, wind, seizoenskleuren en vallende blaadjes
   js/city/figuren3d.js       gidsen, reizigers en inwoners (één geometrie; elke gids wacht op zijn eigen manier)
-  js/city/stad2d.js          terugvalkaart zonder WebGL (isometrisch canvas, zelfde methodes, met water en weer)
+  js/city/stad2d.js          terugvalkaart zonder WebGL (isometrisch canvas, zelfde methodes, met water, weer, hoogwater en De Slijkkraak)
+  js/city/verhaal.js         het verhaal in de stad als zuivere logica: van labo's, week, codes en eindbaas naar hoogwater, slijkarmen en wat er per week verandert; ?verhaal-voorbeelden
+  js/city/verhaal3d.js       het verhaal in 3D: hoogwater (shader met masker), afval, zandzakjes, roeiboten en de weekdingen (weerstation, masten, riet, sluis, bouwplaatsen, feest)
+  js/city/slijkkraak3d.js    De Slijkkraak: kop met ogen die knipperen, ademen, wiegen, armen over bruggen en sluis, druppels en bellen; raid en verslaan
+  js/city/tijd.js            de echte tijd in Brugge (Europe/Brussels) en de stand van de zon en de maan; ?uur= en ?datum=
   js/city/stad.js            kiest 3D of 2D, bewaart de kwaliteitskeuze
   js/figuren/uiterlijk.js    keuzes voor het uiterlijk (vier tabbladen), kleuren, willekeurigeLook()
   js/figuren/modellen.js     low-poly 3D-reizigers (kapsels, hoofddoeken, kosmetiek) en de zes gidsen
@@ -296,6 +303,10 @@ het dashboard, het digibord en de eindbaas lezen alles uit dit object.
 - `js/city/water.js` berekent het proper water: een zone wordt helder als de helft van de klas (naar boven afgerond) de test van het bijbehorende labo haalt (>= 70 %).
   Na de overwinning op de eindbaas is alles helder.
 - Mist: de vrije straal groeit met de klas-XP (`mistDoel` per reiziger) en ligt nooit over iets wat je nodig hebt.
+- `js/city/verhaal.js` maakt van dezelfde voortgang het verhaal in de stad. Week 1 begint met hoogwater en De Slijkkraak in de reien;
+  elk labo laat het water zakken (labo 1, labo 2, de Stadsmissie van de week), elke heldere zone trekt de slijkarmen daar terug, en elke week heeft
+  zijn eigen tekens (weerstation en windvaan, gezonken masten, stil Minnewater, vastgeslibde sluis, droge fontein) die verdwijnen als de klas ze oplost.
+  Wat in een eerdere week moest gebeuren, telt als gedaan zodra de leerkracht een week verder zet. Tijdens de eindbaas rijst de kop bij de Markt; na de overwinning zakt hij weg en is er feest.
 - Wat een reiziger al zag, staat per toestel in `localStorage` (`klets:stad:gezien:<id>`), zodat nieuwe gebouwen bij het openen worden opgebouwd.
 
 ### Prestaties en kwaliteit
@@ -310,7 +321,12 @@ het dashboard, het digibord en de eindbaas lezen alles uit dit object.
 - Bron: `https://api.open-meteo.com/v1/forecast?latitude=51.2093&longitude=3.2247&current=...` (gratis, geen sleutel, geen persoonsgegevens).
 - Het antwoord wordt 15 minuten bewaard in `localStorage` (`vagant:weer:brugge`), zodat een klas vol laptops de dienst niet overbelast.
 - Mislukt het verzoek (geen internet, firewall), dan komt er **één** waarschuwing in de console en gebruikt de app `terugval()`: rustig weer dat bij het seizoen en het uur past.
-- Alles is te overschrijven met `?weer=` en `?datum=` (zie de tabel hierboven), ook voor de tests.
+- Alles is te overschrijven met `?weer=`, `?datum=` en `?uur=` (zie de tabel hierboven), ook voor de tests.
+- Eerlijk: lukt het ophalen niet, dan staat er in de weerchip **Geen live weer** (de stad toont dan rustig weer van het seizoen) en probeert de app het om de 15 minuten opnieuw.
+  Wat buiten zo is, is ook in de stad zo: regen (met natte grond en plassen), motregen, sneeuw (met een sneeuwdek als er sneeuw ligt: `snow_depth`), zon met schaduwen, bewolkt zonder schaduwen, mist, onweer met bliksem, wind in bomen, vlaggen en windvaan.
+- Dag en nacht volgen standaard de echte klok van Brugge en de stand van de zon (zonsopgang en -ondergang per seizoen, schemering, maan en sterren, verlichte ramen en lantaarns).
+  De leerkracht kan dat in het dashboard of op het digibord vastzetten op dag, avond of nacht.
+- Wordt de app ingebed met een strenge Content-Security-Policy, zet dan `connect-src https://api.open-meteo.com` erbij, anders is er geen live weer.
 
 ## Licenties
 - **three.js** r170 (`vendor/three.module.min.js`, ongewijzigd uit `three@0.170.0`, bestand `build/three.module.min.js`),

@@ -16,6 +16,7 @@ import { stadModel, goalMissieIndex, HUISDECOR, NIVEAU_NAAM } from '../city/stad
 import { WIJK } from '../city/layout.js';
 import { volgWeer, weerTekst, windstreek, huidigWeer } from '../city/weer.js';
 import { waterTekst } from '../city/water.js';
+import { nuInBrugge, uurTekst } from '../city/tijd.js';
 import { openLabo } from '../labo/labo.js';
 import { icoon } from './iconen.js';
 import { runMission, gidsPortret } from '../missions/engine.js';
@@ -187,7 +188,7 @@ function showCreator({ pupil = null, onKlaar = null } = {}) {
 
 // ---------- de stad ----------
 const GIDS_VOLGORDE = ['atlas', 'woordje', 'tella', 'kroniek', 'bram', 'byte'];
-const TIJDEN = [['cyclus', 'Dag en nacht', 'cyclus'], ['dag', 'Dag', 'zon'], ['avond', 'Avond', 'avond'], ['nacht', 'Nacht', 'maan']];
+const TIJDEN = [['live', 'Echte tijd in Brugge', 'cyclus'], ['cyclus', 'Snelle dag-en-nachtlus', 'cyclus'], ['dag', 'Dag', 'zon'], ['avond', 'Avond', 'avond'], ['nacht', 'Nacht', 'maan']];
 const LAGEN = [[null, 'Geen kaartlaag'], ['sterkte', 'Doelen: sterk en zwak'], ['wijken', 'Wijken'], ['mijn', 'Mijn bijdrage']];
 const WEER_ICO = { regen: 'regen', motregen: 'regen', buien: 'regen', sneeuw: 'sneeuw', mist: 'mist', storm: 'storm', zon: 'zon', bewolkt: 'wolk', grijs: 'wolk' };
 
@@ -228,13 +229,34 @@ async function enterWorld() {
   S.stad.zetMarker('missiebord', h('button', { type: 'button', class: 'marker label klein', onclick: () => kiesInStad('missiebord') }, 'Missiebord'), LABELS.missiebord);
   await bouwStad({ eerste: true });
   startWeer();
+  setTimeout(() => toonVerhaalBalk(), 900);
   view.querySelector('canvas')?.focus();
   if (!S.pupil.leerkracht && !(S.pupil.gezien || []).includes('intro-' + THEMA.id)) showIntro();
   else setTimeout(() => adviseurPraat(), 2500);
   clearInterval(S.praatIv); S.praatIv = setInterval(() => { if (!document.querySelector('.overlay')) adviseurPraat(); }, 45000);
   sync.publish('raid:vraag', {});
 }
-function tijdUitInstelling() { const dn = S.settings.dagNacht; return dn === 'dag' ? 'dag' : dn === 'nacht' ? 'nacht' : 'cyclus'; }
+/** "Wat gebeurt er in Zwinvliet?": een korte balk met het verhaal van de week (een keer per week, of in het voorbeeld). */
+function toonVerhaalBalk(forceer = false) {
+  const v = S.model?.verhaal; if (!v?.actief || !S.stad) return;
+  const sleutel = `vagant:verhaal:gezien:${THEMA.id}:${S.pupil.id}`, wat = `${v.week}:${v.baasWeg ? 'einde' : 'week'}`;
+  let gezien = null; try { gezien = localStorage.getItem(sleutel); } catch { /* geen opslag */ }
+  if (!forceer && !v.preview && gezien === wat) return;
+  try { if (!v.preview) localStorage.setItem(sleutel, wat); } catch { /* geen opslag */ }
+  $('#verhaal-balk')?.remove();
+  const sluit = () => { clearTimeout(S.verhaalT); balk.classList.add('weg'); setTimeout(() => balk.remove(), 300); };
+  const balk = h('section', { class: 'verhaal-balk', id: 'verhaal-balk', role: 'status', 'aria-live': 'polite' },
+    h('div', { class: 'vb-kop' }, h('small', {}, v.preview ? `Voorbeeld: ${v.stapNaam || v.stap}` : `Wat gebeurt er in ${stadNaam()}?`), h('b', {}, v.tekst.titel),
+      h('button', { type: 'button', class: 'rond klein zacht', 'aria-label': 'Sluiten', onclick: sluit }, icoon('sluit'))),
+    h('p', {}, v.tekst.zin), v.tekst.extra ? h('p', { class: 'vb-extra' }, v.tekst.extra) : null,
+    h('div', { class: 'vb-knoppen' },
+      !v.baasWeg ? h('button', { type: 'button', class: 'btn primair klein', onclick: () => { S.stad.focus('slijkkraak', 24); } }, 'Toon De Slijkkraak') : null,
+      h('button', { type: 'button', class: 'btn klein', onclick: () => speak(`${v.tekst.titel} ${v.tekst.zin}`) }, 'Lees voor'),
+      h('button', { type: 'button', class: 'btn klein zacht', onclick: () => { sluit(); openVerhaal(); } }, 'Het weekverhaal')));
+  $('.stad-wrap')?.append(balk);
+  clearTimeout(S.verhaalT); S.verhaalT = setTimeout(sluit, 40000);
+}
+function tijdUitInstelling() { const dn = S.settings.dagNacht; return dn === 'dag' ? 'dag' : dn === 'nacht' ? 'nacht' : 'live'; }
 
 /** Het echte weer van Brugge volgen: de stad en de weerwijzer in de balk. */
 function startWeer() {
@@ -245,9 +267,17 @@ function updateWeerWijzer() {
   const el = $('#weer-wijzer'); if (!el || !S.weer) return;
   const w = S.weer;
   el.innerHTML = '';
-  el.append(icoon(w.dag ? (WEER_ICO[w.soort] || 'wolk') : 'maan', 'ico weer-ico'),
-    h('span', { class: 'weer-tekst' }, h('b', {}, `${Math.round(w.temp)} graden`), h('small', {}, `${w.tekst} - ${w.seizoen}`)));
-  el.title = `Het echte weer in Brugge: ${weerTekst(w)}`;
+  const nacht = (S.stad?.nacht ?? (w.dag ? 0 : 1)) > 0.5;
+  if (w.bron === 'terugval') {
+    // geen verbinding met de weerdienst: zeg dat eerlijk (de stad toont dan rustig seizoensweer)
+    el.append(icoon('wolk', 'ico weer-ico'), h('span', { class: 'weer-tekst' }, h('b', {}, 'Geen live weer'), h('small', {}, `${uurTekst(nuInBrugge())} in Brugge - ${w.seizoen}`)));
+    el.title = 'De weerdienst is niet bereikbaar. De stad toont rustig weer dat bij het seizoen past en probeert het elk kwartier opnieuw.';
+    return;
+  }
+  const oud = w.bron === 'cache-oud' && w.opgehaald ? ` (gemeten om ${uurTekst(new Date(w.opgehaald))})` : '';
+  el.append(icoon(nacht && ['zon', 'bewolkt'].includes(w.soort) ? 'maan' : (WEER_ICO[w.soort] || 'wolk'), 'ico weer-ico'),
+    h('span', { class: 'weer-tekst' }, h('b', {}, `${Math.round(w.temp)} graden`), h('small', {}, `${w.tekst} - ${uurTekst(nuInBrugge())} in Brugge`)));
+  el.title = `Het echte weer in Brugge: ${weerTekst(w)}${oud}`;
 }
 
 /** Lees alle gegevens en toon ze in de stad. */
@@ -334,7 +364,7 @@ function updateHud() {
   if (m) {
     $('#hud-bevolking').textContent = String(m.bevolking);
     $('#hud-gebouwen').textContent = String(m.aantalGebouwd);
-    $('#hud-week').textContent = String(S.settings.huidigeWeek);
+    $('#hud-week').textContent = String(m.verhaal?.preview ? m.week : S.settings.huidigeWeek);
     $('#hud-water').textContent = Math.round((m.water?.helder || 0) * 100) + ' %';
     $('#hud-klas').style.width = Math.round(clamp(m.xp / Math.max(1, m.doelXp), 0, 1) * 100) + '%';
   }
@@ -461,6 +491,15 @@ async function toonInfo(id) {
       h('p', {}, deco.length ? 'Versierd met: ' + deco.map(d => HUISDECOR[d]).filter(Boolean).join(', ') + '.' : (hu.ik ? 'Je huis is nog niet versierd. Codes uit je Logboek geven versiering.' : 'Een gezellig huis in de Reizigerswijk.')),
       hu.ik ? h('div', { class: 'ik-knoppen' }, h('button', { type: 'button', class: 'btn primair', onclick: () => openHuis() }, 'Versier je huis'),
         h('button', { type: 'button', class: 'btn', onclick: () => showCreator({ pupil: S.pupil }) }, 'Pas je reiziger aan')) : null);
+    return;
+  }
+  if (id === 'slijkkraak') {
+    const v = S.model?.verhaal;
+    add(k, kop(THEMA.eindbaas?.naam || 'De Slijkkraak', 'Het slijkmonster uit de Noordzee', '#6b5a2e'),
+      h('p', {}, v?.tekst?.zin || THEMA.eindbaas?.verhaal || ''),
+      v?.tekst?.extra ? h('p', { class: 'tip' }, v.tekst.extra) : null,
+      h('div', { class: 'ik-knoppen' }, h('button', { type: 'button', class: 'btn primair', onclick: () => openVerhaal() }, 'Het weekverhaal'),
+        h('button', { type: 'button', class: 'btn', onclick: () => S.stad.focus('slijkkraak', 18) }, 'Zoom in')));
     return;
   }
   if (id === 'station') {
@@ -941,6 +980,8 @@ function onRaidState(st) {
   const ban = $('#raid-banner'); if (!ban) return;
   const vorigeHp = S.raidHp; S.raidHp = st.hp;
   if (S.stad) S.stad.setStorm(st.status === 'actief' || st.status === 'lobby' ? 0.35 + 0.65 * (st.hp / Math.max(1, st.maxHp)) : 0, { flits: vorigeHp != null && st.hp < vorigeHp });
+  // De Slijkkraak rijst op bij de Markt en krimpt bij elke treffer
+  S.stad?.setRaid?.(st);
   if (st.status === 'actief' || st.status === 'lobby') {
     ban.hidden = false; ban.innerHTML = '';
     ban.append(h('b', {}, st.status === 'lobby' ? 'De eindbaas komt: ' : 'EINDBAAS! '), `${st.naam}. `, h('button', { class: 'btn primair', type: 'button', id: 'raid-mee', onclick: openRaid }, 'Doe mee'));

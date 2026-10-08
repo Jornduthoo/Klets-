@@ -6,6 +6,8 @@ import { sterktes } from './weer.js';
 import { wegennet, takLijn, KRUIS, bruggen } from './wegen.js';
 import { AVATAR_OPTIES, dakKleur } from '../figuren/uiterlijk.js';
 import { plaatsMarkers } from './markers.js';
+import { KOP_PLEKKEN, ARMEN } from './verhaal.js';
+import { nuInBrugge, zonStand } from './tijd.js';
 
 const TAU = Math.PI * 2;
 const HOOGTE = [1.1, 2.3, 4.2, 7.5];
@@ -25,7 +27,7 @@ export class Stad2D {
     this.markerLaag = document.createElement('div'); this.markerLaag.className = 'stad-markers'; container.append(this.markerLaag);
     this.g = this.cv.getContext('2d');
     this.cam = { x: 0, z: 6, zoom: 9, yaw: 0.62 }; this.doel = { ...this.cam };
-    this.model = null; this.overlay = null; this.markers = new Map(); this.storm = 0; this.nacht = 0; this.tijdMode = 'cyclus'; this.t = 0;
+    this.model = null; this.overlay = null; this.markers = new Map(); this.storm = 0; this.nacht = 0; this.tijdMode = 'live'; this.raid = null; this.vloed = 0; this.kraakOp = 0; this.t = 0;
     this.hits = []; this.pauze = false; this.kwaliteit = 'laag';
     this.weer = null; this.seizoen = 'lente'; this.bruggen = bruggen();
     this._invoer();
@@ -57,7 +59,19 @@ export class Stad2D {
   }
   markeerNieuw() {}
   setOverlay(m) { this.overlay = m || null; }
-  setTijd(m) { this.tijdMode = m || 'cyclus'; }
+  setTijd(m) { this.tijdMode = ['live', 'cyclus', 'dag', 'avond', 'nacht'].includes(m) ? m : 'live'; this._liveT = -1; }
+  /** De raid van De Slijkkraak (status lobby|actief|gewonnen|gestopt). */
+  setRaid(st) { this.raid = st || null; if (st?.status === 'gewonnen') this._gewonnenT = this.t; }
+  /** 0 = dag, 0.8 = nacht, volgens de echte stand van de zon boven Brugge (elke minuut opnieuw). */
+  _liveNacht() {
+    if (this._liveT == null || this._liveT < 0 || this.t - this._liveT > 60) {
+      this._liveT = this.t;
+      const e = zonStand(nuInBrugge()).elev * 180 / Math.PI;
+      const L = clamp((e + 7) / 11, 0, 1), dag = L * L * (3 - 2 * L);
+      this._liveN = 0.8 * (1 - dag);
+    }
+    return this._liveN;
+  }
   setStorm(n) { this.stormDoel = clamp(n, 0, 1); }
   setKwaliteit() {}
   /** Het echte weer van Brugge: de lucht, de regen en het seizoen van de kaart. */
@@ -71,6 +85,7 @@ export class Stad2D {
   focus(id, dist = 30) { const p = this.positieVan(id); if (p) this.vliegNaar(p.x, p.z, dist); }
   selecteer(id) { this.selectie = id; }
   positieVan(id) {
+    if (id === 'slijkkraak') { const k = this._kop(); return k ? { x: k.x, y: 1, z: k.z } : null; }
     if (!id) return null;
     if (id.startsWith('gids:')) { const w = WIJKEN.find(x => x.gids === id.slice(5)); if (!w) return null; const p = hqPositie(w); return { x: p.x, y: 3, z: p.z }; }
     if (id.startsWith('plek:')) { const pl = PLEKKEN[id.slice(5)]; return pl ? { x: pl.x, y: Math.min(4, (pl.labelY ?? 3) * 0.6), z: pl.z } : null; }
@@ -124,7 +139,13 @@ export class Stad2D {
     for (const key of ['x', 'z', 'zoom', 'yaw']) this.cam[key] = lerp(this.cam[key], this.doel[key], k);
     if (this.o.digibord) this.doel.yaw += dt * 0.02;
     this.storm = lerp(this.storm, this.stormDoel || 0, k);
-    const fase = this.tijdMode === 'nacht' ? 0.8 : this.tijdMode === 'avond' ? 0.5 : this.tijdMode === 'dag' ? 0 : (Math.sin(this.t / 300 * TAU) < -0.6 ? 0.8 : 0);
+    const fase = this.tijdMode === 'nacht' ? 0.8 : this.tijdMode === 'avond' ? 0.5 : this.tijdMode === 'dag' ? 0 : this.tijdMode === 'live' ? this._liveNacht() : (Math.sin(this.t / 300 * TAU) < -0.6 ? 0.8 : 0);
+    // het verhaal: hoogwater en De Slijkkraak (tijdens de raid komt de kop boven, na de overwinning zakt hij weg)
+    const vh = this.model?.verhaal, raidAan = this.raid?.status === 'actief';
+    const hp = raidAan ? clamp((this.raid.hp ?? 1) / Math.max(1, this.raid.maxHp ?? 1), 0, 1) : 0;
+    this.vloed = lerp(this.vloed, Math.max(vh?.actief ? vh.vloed : 0, raidAan ? 0.35 + 0.35 * hp : 0), k * 0.3);
+    const weg = this.raid?.status === 'gewonnen' || (vh?.baasWeg && !raidAan);
+    this.kraakOp = lerp(this.kraakOp, !weg && (raidAan || (vh?.actief && vh.kop?.zicht)) ? 1 : 0, k * 0.4);
     this.nacht = lerp(this.nacht, fase, k * 0.3);
     const items = [];
     for (const m of this.markers.values()) {
@@ -133,6 +154,35 @@ export class Stad2D {
       const q = this.p(p.x, p.y, p.z); el.style.display = ''; items.push({ m, x: q.x, y: q.y });
     }
     plaatsMarkers(items);
+  }
+  /** Waar de kop van De Slijkkraak nu is (of null als hij weg is). */
+  _kop() {
+    if (this.kraakOp < 0.03) return null;
+    const vh = this.model?.verhaal, raidAan = this.raid?.status === 'actief';
+    const plek = KOP_PLEKKEN[raidAan ? 'rozenhoedkaai' : vh?.kop?.plek] || KOP_PLEKKEN.rozenhoedkaai;
+    const hp = raidAan ? clamp((this.raid.hp ?? 1) / Math.max(1, this.raid.maxHp ?? 1), 0, 1) : 0;
+    const schaal = (raidAan ? 1.15 + 0.55 * hp : (vh?.kop?.schaal ?? 1)) * (1 - 0.45 * (raidAan ? 0 : vh?.kop?.diep ?? 0));
+    return { x: plek.x, z: plek.z, r: 3.4 * schaal * this.kraakOp };
+  }
+  /** De kop als een bultige modderbol met grote ogen (geen eng monster). */
+  _tekenKraak(k) {
+    const g = this.g, q = this.p(k.x, k.r * 0.55, k.z), r = k.r * this.cam.zoom, adem = 1 + Math.sin(this.t * 1.6) * 0.03;
+    g.save(); g.translate(q.x, q.y); g.scale(adem, 1 / adem);
+    const gr = g.createRadialGradient(-r * 0.3, -r * 0.4, r * 0.1, 0, 0, r);
+    gr.addColorStop(0, '#a89a52'); gr.addColorStop(1, '#4a3c1c');
+    g.fillStyle = gr; g.beginPath();
+    for (let i = 0; i <= 40; i++) { const a = i / 40 * TAU, rr = r * (1 + 0.06 * Math.sin(a * 5 + this.t)); i ? g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr * 0.9) : g.moveTo(Math.cos(a) * rr, Math.sin(a) * rr * 0.9); }
+    g.fill();
+    const knip = (this.t % 4.2) < 0.15;
+    for (const sx of [-1, 1]) {
+      g.fillStyle = '#f4f0dc'; g.beginPath(); g.ellipse(sx * r * 0.36, -r * 0.18, r * 0.27, knip ? r * 0.04 : r * 0.3, 0, 0, TAU); g.fill();
+      if (!knip) { g.fillStyle = '#1b1a14'; g.beginPath(); g.arc(sx * r * 0.32, -r * 0.12, r * 0.13, 0, TAU); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(sx * r * 0.28, -r * 0.17, r * 0.045, 0, TAU); g.fill(); }
+      g.strokeStyle = '#2a2210'; g.lineWidth = Math.max(2, r * 0.08); g.beginPath(); g.moveTo(sx * r * 0.14, -r * 0.5); g.lineTo(sx * r * 0.58, -r * 0.56); g.stroke();
+    }
+    g.strokeStyle = '#2a2210'; g.lineWidth = Math.max(1.5, r * 0.06); g.beginPath(); g.arc(0, r * 0.2, r * 0.3, 0.2 * Math.PI, 0.8 * Math.PI); g.stroke();
+    g.restore();
+    const xs = [q.x - r, q.x + r], ys = [q.y - r, q.y + r];
+    this.hits.push({ id: 'slijkkraak', x0: xs[0], x1: xs[1], y0: ys[0], y1: ys[1] });
   }
   _ellips(r, fill, stroke, lw) {
     const g = this.g; g.beginPath();
@@ -196,6 +246,29 @@ export class Stad2D {
     g.strokeStyle = '#7d838e'; g.lineWidth = Math.max(1, this.cam.zoom * 0.08);
     for (const zz of SPOOR_SPOREN) for (const dz of [-0.26, 0.26]) { const a = this.p(-SPOOR_X, 0, SPOOR_Z + zz + dz), b = this.p(SPOOR_X, 0, SPOOR_Z + zz + dz); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
     for (const o of net.overwegen) for (const zk of [-1, 1]) { const q = this.p(o.x - zk * 0.9, 0.5, o.z + zk * (SPOOR_HALF - 0.15)); g.fillStyle = '#e0453a'; g.fillRect(q.x - 2, q.y - 2, 4, 4); }
+    // hoogwater: bruin slijkwater over de straten en de Markt
+    if (this.vloed > 0.01) {
+      const c = this.p(0, 0, 0), R = 27.5 * this.cam.zoom;
+      g.save(); g.translate(c.x, c.y); g.scale(1, 0.55);
+      const gr = g.createRadialGradient(0, 0, 0, 0, 0, R);
+      const a = (0.72 * this.vloed).toFixed(3);
+      gr.addColorStop(0, `rgba(104,82,42,${a})`); gr.addColorStop(0.85, `rgba(110,90,46,${a})`); gr.addColorStop(1, 'rgba(110,90,46,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(0, 0, R, 0, TAU); g.fill();
+      g.strokeStyle = `rgba(230,220,180,${(0.35 * this.vloed).toFixed(3)})`; g.lineWidth = 1;
+      for (let i = 0; i < 14; i++) { const rr = ((i * 0.37 + this.t * 0.05) % 1) * R; g.beginPath(); g.arc(Math.cos(i * 2.4) * R * 0.6, Math.sin(i * 2.4) * R * 0.6, rr * 0.08, 0, TAU); g.stroke(); }
+      g.restore();
+    }
+    // de slijkarmen: hoe properder het water in die zone, hoe kleiner (tijdens de raid allemaal terug)
+    if (this.kraakOp > 0.02) {
+      const armen = this.model?.verhaal?.armen || {};
+      for (const arm of ARMEN) {
+        const sterk = (this.raid?.status === 'actief' ? 1 : (armen[arm.zone] ?? 0)) * this.kraakOp; if (sterk < 0.05) continue;
+        const b = this.p(arm.b[0], 0, arm.b[1]), t = this.p(arm.b[0] + (arm.t[0] - arm.b[0]) * sterk, 0, arm.b[1] + (arm.t[1] - arm.b[1]) * sterk);
+        const top = this.p((arm.b[0] + arm.t[0]) / 2, arm.h * sterk + Math.sin(this.t * 1.3 + arm.b[0]) * 0.2, (arm.b[1] + arm.t[1]) / 2);
+        g.strokeStyle = arm.grijs ? '#7d7a6c' : '#6f6a2c'; g.lineCap = 'round'; g.lineWidth = Math.max(2, arm.r * 2.2 * this.cam.zoom * sterk);
+        g.beginPath(); g.moveTo(b.x, b.y); g.quadraticCurveTo(top.x, top.y, t.x, t.y); g.stroke();
+      }
+    }
     // kaartlaag
     const m = this.model;
     if (m && this.overlay) {
@@ -248,6 +321,8 @@ export class Stad2D {
       const sr = net.stadR;
       for (let i = 0; i < 160; i++) { const p = polar(sr + 2.5 + r() * Math.max(1, DAL_R - sr - 3), r() * TAU); if (!isVrijVoorBoom(p.x, p.z)) continue; obj.push({ x: p.x, z: p.z, f: () => { const q = this.p(p.x, 0.8, p.z); g.fillStyle = BLADKLEUR[this.seizoen] || '#4fa548'; g.beginPath(); g.arc(q.x, q.y, 0.55 * this.cam.zoom * (this.seizoen === 'winter' ? 0.6 : 1), 0, TAU); g.fill(); } }); }
     }
+    const kop = this._kop();
+    if (kop) obj.push({ x: kop.x, z: kop.z, f: () => this._tekenKraak(kop) });
     for (const o of obj) o.d = this.p(o.x, 0, o.z).d;
     obj.sort((a, b) => a.d - b.d).forEach(o => o.f());
     // mist

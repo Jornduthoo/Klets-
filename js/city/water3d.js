@@ -134,6 +134,7 @@ export class Water3D {
     this.zoneHelder = {};      // zone -> 0..1 (gedempt naar het doel)
     this.doelHelder = {};
     this.uT = { value: 0 };
+    this.peil = WATER_Y;         // het waterpeil: bij hoogwater staat het water tot aan de kaai
     this.mat = stad._lijfMat();
     this._bouwWater();
     this._bouwKaden();
@@ -428,6 +429,8 @@ export class Water3D {
 
   tick(dt, t, { nacht = 0, zonDir, wind = 0, top, hor } = {}) {
     this.uT.value = t;
+    this.vlak.position.y = this.peil;
+    this.aangemeerd.position.y = this.peil - WATER_Y;
     if (top) this.waterMat.uniforms.uTop.value.copy(top);
     if (hor) this.waterMat.uniforms.uHor.value.copy(hor);
     const k = 1 - Math.exp(-dt * 0.9);
@@ -443,14 +446,16 @@ export class Water3D {
       s.obj.visible = sc > 0.02;
       if (!s.obj.visible) continue;
       s.obj.scale.set(sc, sc * (0.9 + Math.sin(t * 0.7 + s.f) * 0.1), sc);
-      s.obj.position.y = WATER_Y + 0.03 - (1 - sc) * 0.25;
+      s.obj.position.y = this.peil + 0.03 - (1 - sc) * 0.25;
     }
     let ng = 0;
-    const golf = (x, z, s) => { if (ng < this.golven.instanceMatrix.count) { M4.compose(V3.set(x, WATER_Y + 0.015, z), Q.identity(), S3.setScalar(s)); this.golven.setMatrixAt(ng++, M4); } };
+    const golf = (x, z, s) => { if (ng < this.golven.instanceMatrix.count) { M4.compose(V3.set(x, this.peil + 0.015, z), Q.identity(), S3.setScalar(s)); this.golven.setMatrixAt(ng++, M4); } };
+    const hoogwater = this.peil > WATER_Y + 0.15;
     // boten varen hun route, maar enkel als het water van hun thuiszone al een beetje proper is
     for (const b of this.boten) {
       const h = this.zoneHelder[b.rt.zone] ?? 0;
-      b.obj.visible = b.rt.altijd || (b.rt.vuil ? h < 0.6 : h > 0.25);
+      // bij hoogwater passen de bootjes niet meer onder de bruggen: ze liggen dan stil aan de kant (niet getekend)
+      b.obj.visible = b.rt.altijd || (!hoogwater && (b.rt.vuil ? h < 0.6 : h > 0.25));
       if (!b.obj.visible) continue;
       if (b.wacht > 0) b.wacht -= dt;
       else {
@@ -458,7 +463,7 @@ export class Water3D {
         if (!b.rt.pad.lus && (b.s > b.rt.pad.L || b.s < 0)) { b.richting = -b.richting; b.s = clamp(b.s, 0, b.rt.pad.L); b.wacht = 3 + this.r() * 4; }
       }
       const p = b.rt.pad.punt(b.s);
-      b.obj.position.set(p.x, WATER_Y + Math.sin(t * 1.3 + b.s) * 0.012, p.z);
+      b.obj.position.set(p.x, this.peil + Math.sin(t * 1.3 + b.s) * 0.012, p.z);
       b.obj.rotation.set(0, Math.atan2(p.dx * b.richting, p.dz * b.richting), Math.sin(t * 1.1 + b.s) * 0.03 * (1 + wind));
       golf(p.x, p.z, b.rt.groot ? 4.2 : 1.5);
     }
@@ -471,7 +476,7 @@ export class Water3D {
       d.obj.visible = h > drempel;
       if (!d.obj.visible || d.vast) continue;
       const p = this._dierPos(d, t, dt);
-      const y = d.soort === 'vis' ? WATER_Y - 0.1 + Math.sin(t * 2 + d.f) * 0.04 : d.soort === 'kikker' ? WATER_Y + 0.01 : WATER_Y + 0.0;
+      const y = d.soort === 'vis' ? this.peil - 0.1 + Math.sin(t * 2 + d.f) * 0.04 : d.soort === 'kikker' ? this.peil + 0.01 : this.peil + 0.0;
       d.obj.position.set(p.x, y, p.z);
       d.obj.rotation.y = Math.atan2(-p.hx, -p.hz);        // de dieren kijken naar -z: draai ze in hun zwemrichting
       if (d.soort !== 'vis') golf(p.x, p.z, d.soort === 'zwaan' ? 0.8 : 0.55);
@@ -479,6 +484,8 @@ export class Water3D {
     this.golven.count = ng; this.golven.instanceMatrix.needsUpdate = true;
   }
 
+  /** Het waterpeil (y) zetten: WATER_Y is normaal, hoger bij hoogwater (zie verhaal3d.js). */
+  setPeil(y) { this.peil = y; }
   /** Hoe helder is deze zone nu (gedempt)? */
   helder(zone) { return this.zoneHelder[zone] ?? 0; }
   /** De gemiddelde helderheid, voor de HUD. */

@@ -27,10 +27,13 @@ import {
 import { AVATAR_OPTIES, dakKleur } from '../figuren/uiterlijk.js';
 import { Figuren3D } from './figuren3d.js';
 import { plaatsMarkers } from './markers.js';
+import { Verhaal3D } from './verhaal3d.js';
+import { zonStand, nuInBrugge, maanFase } from './tijd.js';
 
 const TAU = Math.PI * 2;
 const V3 = new THREE.Vector3(), M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), S3 = new THREE.Vector3(), E = new THREE.Euler(), K = new THREE.Color();
 const YAS = new THREE.Vector3(0, 1, 0);
+const MAAN_DIR = new THREE.Vector3(-0.5, 0.75, -0.45).normalize();
 const ease = { uit: t => 1 - Math.pow(1 - t, 3), terug: t => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); }, inUit: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2 };
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
@@ -145,7 +148,7 @@ export class Stad3D {
     this.c = container; this.o = opts;
     this.kwaliteit = opts.kwaliteit === 'laag' ? 'laag' : 'hoog';
     this.autoKwaliteit = !opts.kwaliteit || opts.kwaliteit === 'auto';
-    this.t = 0; this.tijdMode = 'cyclus'; this.dagFase = 0.13; this.overlay = null; this.pauze = false;
+    this.t = 0; this.tijdMode = 'live'; this.dagFase = 0.13; this.overlay = null; this.pauze = false;
     this.storm = 0; this.stormDoel = 0; this.flits = 0; this.anims = []; this.stof = []; this.bekend = null;
     this.model = null; this.markers = new Map(); this.selectie = null;
     this.r = rng('klets-stad');
@@ -190,6 +193,8 @@ export class Stad3D {
     this._bouwStorm();
     this._bouwPost();
     this._bouwWeer();
+    // het verhaal van het thema: hoogwater, De Slijkkraak en wat er per week en per labo verandert
+    this.verhaal3d = new Verhaal3D(this);
     this._bedieningen();
 
     this._ro = new ResizeObserver(() => this._resize());
@@ -231,6 +236,20 @@ export class Stad3D {
     this.sterMat = new THREE.PointsMaterial({ color: '#ffffff', size: 2, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false });
     this.sterren = new THREE.Points(g, this.sterMat); this.sterren.frustumCulled = false;
     this.scene.add(this.sterren);
+    // de maan (met de echte fase van vandaag), laag aan de hemel zodat je ze ook ziet als je inzoomt
+    const fase = maanFase(nuInBrugge());
+    const maanTex = canvasTex(128, 128, (g2, w) => {
+      g2.fillStyle = '#fbf6df'; g2.beginPath(); g2.arc(w / 2, w / 2, w * 0.42, 0, TAU); g2.fill();
+      // de schaduw van de fase (0 = nieuw, 0.5 = vol): een schijf die opzij schuift
+      const r = w * 0.42, licht = (1 - Math.cos(fase * TAU)) / 2, d = 2 * r * licht;
+      if (licht < 0.97) { g2.globalCompositeOperation = 'destination-out'; g2.fillStyle = 'rgba(0,0,0,0.9)'; g2.beginPath(); g2.arc(w / 2 + (fase < 0.5 ? -d : d), w / 2, r * 1.02, 0, TAU); g2.fill(); }
+      g2.globalCompositeOperation = 'source-over';
+      g2.fillStyle = 'rgba(200,190,160,0.35)'; for (const [x, y, r] of [[52, 50, 9], [74, 70, 7], [60, 82, 5]]) { g2.beginPath(); g2.arc(x, y, r, 0, TAU); g2.fill(); }
+    });
+    this.maan = new THREE.Mesh(new THREE.PlaneGeometry(26, 26), new THREE.MeshBasicMaterial({ map: maanTex, transparent: true, depthWrite: false, fog: false }));
+    const md = new THREE.Vector3(-0.62, 0.32, -0.72).normalize();
+    this.maan.position.copy(md).multiplyScalar(520); this.maan.lookAt(0, 0, 0); this.maan.renderOrder = -9; this.maan.frustumCulled = false; this.maan.visible = false;
+    this.scene.add(this.maan);
   }
 
   // ---------- grond ----------
@@ -849,7 +868,10 @@ export class Stad3D {
     this._zetStadsHuizen(model, bezet, stadR);
     this._zetHuizen(model.huizen);
     if (model.water) this.water3d.setStand(model.water);
-    this.figuren.zet(model, { inwoners: this.kwaliteit === 'hoog' ? 12 : 6 });
+    if (model.verhaal) this.verhaal3d.zet(model.verhaal);
+    // bij hoogwater blijven de inwoners binnen
+    const natteStad = (model.verhaal?.vloed || 0) > 0.3;
+    this.figuren.zet(model, { inwoners: natteStad ? 2 : this.kwaliteit === 'hoog' ? 12 : 6 });
     this.mistDoelR = model.mistRadius ?? MIST_MAX;   // vaste nevel aan de rand van het dal
     if (this.mistR == null) this.mistR = model.mistRadius;
     this.meterDoel = clamp(model.xp / Math.max(1, model.doelXp), 0, 1);
@@ -862,6 +884,8 @@ export class Stad3D {
     if (vlieg && nieuw.length) { const s = nieuw[0].slot; this.vliegNaar(s.x, s.z, 34); }
     return nieuw;
   }
+  /** De eindbaas van het thema (via het digibord): { status, hp, maxHp }. De Slijkkraak rijst op bij de Markt. */
+  setRaid(st) { this.verhaal3d?.setRaid(st); }
   /** Laat bepaalde gebouwen opnieuw de bouwanimatie spelen bij de volgende update. */
   markeerNieuw(ids) { this._extraNieuw = ids; }
 
@@ -1093,7 +1117,20 @@ export class Stad3D {
 
   // ---------- dag en nacht ----------
   /** 'cyclus' | 'dag' | 'avond' | 'nacht' */
-  setTijd(mode) { this.tijdMode = mode || 'cyclus'; }
+  /** 'live' (standaard: de echte klok en zon van Brugge) | 'cyclus' (snelle dag-en-nachtlus) | 'dag' | 'avond' | 'nacht' */
+  setTijd(mode) { this.tijdMode = ['live', 'cyclus', 'dag', 'avond', 'nacht'].includes(mode) ? mode : 'live'; this._zonT = 0; }
+  /** De echte stand van de zon boven Brugge, vertaald naar licht: { L (0 nacht .. 1 dag), goud, dir } */
+  _liveLicht() {
+    const nu = performance.now();
+    if (!this._zonLive || nu - (this._zonT || 0) > 60000) { this._zonT = nu; this._moment = nuInBrugge(); this._zonLive = zonStand(this._moment); }
+    const { elev, az } = this._zonLive, eg = elev / Math.PI * 180;
+    const L = smooth(-7, 4, eg);                                  // burgerlijke schemering: tot 6 graden onder de horizon
+    const goud = clamp(1 - Math.abs(eg - 1.5) / 8.5, 0, 1);       // gouden uur rond zonsopgang en -ondergang
+    const e = Math.max(elev, 0.16);                               // een heel lage zon: nog net schaduw, niet plat
+    // wereld: x = oost, z = zuid (noord = -z); az vanaf het noorden met de klok mee
+    const dir = new THREE.Vector3(Math.sin(az) * Math.cos(e), Math.sin(e), -Math.cos(az) * Math.cos(e));
+    return { L, goud, dir, elev };
+  }
   _licht(fase) {
     // fase 0..1: 0-0.55 dag, 0.55-0.66 avond, 0.66-0.9 nacht, 0.9-1 ochtend
     const L = fase < 0.55 ? 1 : fase < 0.66 ? 1 - smooth(0.55, 0.66, fase) : fase < 0.9 ? 0 : smooth(0.9, 1.0, fase);
@@ -1104,14 +1141,26 @@ export class Stad3D {
     return { L, goud: clamp(goud, 0, 1), elev, az };
   }
   _updateLicht(dt) {
-    if (this.tijdMode === 'cyclus') this.dagFase = (this.dagFase + dt / 300) % 1;
-    else { const doel = { dag: 0.3, avond: 0.585, nacht: 0.78 }[this.tijdMode] ?? 0.3; this.dagFase = lerp(this.dagFase, doel, 1 - Math.exp(-dt * 2)); }
-    const { L, goud, elev, az } = this._licht(this.dagFase);
+    let L, goud, dir;
+    if (this.tijdMode === 'live') {
+      const z = this._liveLicht();
+      // zacht naar de nieuwe stand (de eerste keer meteen)
+      this._liveL = this._liveL == null ? z.L : lerp(this._liveL, z.L, 1 - Math.exp(-dt * 2));
+      L = this._liveL; goud = z.goud;
+      dir = L > 0.15 ? z.dir : MAAN_DIR.clone();
+    } else {
+      this._liveL = null;
+      if (this.tijdMode === 'cyclus') this.dagFase = (this.dagFase + dt / 300) % 1;
+      else { const doel = { dag: 0.3, avond: 0.585, nacht: 0.78 }[this.tijdMode] ?? 0.3; this.dagFase = lerp(this.dagFase, doel, 1 - Math.exp(-dt * 2)); }
+      const f = this._licht(this.dagFase);
+      L = f.L; goud = f.goud;
+      dir = L > 0.15 ? new THREE.Vector3(Math.cos(f.az) * Math.cos(f.elev), Math.sin(f.elev), Math.sin(f.az) * Math.cos(f.elev)) : MAAN_DIR.clone();
+    }
     this.nacht = 1 - L;
     const c = (a, b, t) => K.set(a).lerp(new THREE.Color(b), t);
-    // zon of maan
-    const dir = L > 0.15 ? new THREE.Vector3(Math.cos(az) * Math.cos(elev), Math.sin(elev), Math.sin(az) * Math.cos(elev)) : new THREE.Vector3(-0.5, 0.75, -0.45);
     dir.normalize();
+    // de maan aan de nachthemel
+    if (this.maan) { this.maan.visible = L < 0.6; this.maan.material.opacity = clamp((0.6 - L) * 2.5, 0, 1); }
     const zonKleur = c('#fff3df', '#ffb47a', goud).clone();
     this.zon.color.copy(L > 0.15 ? zonKleur : K.set('#a9bcff'));
     this.zon.intensity = L > 0.15 ? lerp(0.6, 2.7, L) * (1 - goud * 0.3) : 0.95;
@@ -1149,8 +1198,10 @@ export class Stad3D {
     const g = this._weerGrijs ?? 0, mist = this.weerSterkte?.mist ?? 0, sneeuw = this.weerSterkte?.sneeuwdek ?? 0;
     if (!g && !mist && !sneeuw) return;
     const grijsK = new THREE.Color('#9fa6b4');
-    this.zon.intensity *= 1 - g * 0.55;
-    this.hemi.intensity *= 1 - g * 0.18;
+    // helemaal bewolkt: geen zon en dus ook geen scherpe schaduwen, wel meer zacht licht van de hemel
+    const bew = smooth(0.6, 0.95, this.weerSterkte?.wolken ?? 0);
+    this.zon.intensity *= 1 - Math.max(g * 0.55, bew * 0.85);
+    this.hemi.intensity *= 1 - g * 0.18 + bew * 0.3;
     this.luchtMat.uniforms.uTop.value.lerp(grijsK, g * 0.75);
     this.luchtMat.uniforms.uHor.value.lerp(new THREE.Color('#c8ccd6'), Math.max(g * 0.7, mist * 0.9));
     this.scene.fog.color.lerp(new THREE.Color('#cfd4dd'), Math.max(g * 0.5, mist * 0.95));
@@ -1280,6 +1331,7 @@ export class Stad3D {
     if (id.startsWith('plek:')) { const p = PLEKKEN[id.slice(5)]; return p ? { x: p.x, y: p.labelY ?? 3, z: p.z } : null; }
     if (id.startsWith('water:')) { const w = WATERS.find(w => 'water:' + w.id === id || 'water:' + w.zone === id); if (!w) return null; const m = waterMidden(w); return { x: m.x, y: 1, z: m.z }; }
     if (id.startsWith('geheim:')) return this.geheimen?.positie(id) || null;
+    if (id === 'slijkkraak') return this.verhaal3d?.kraak.zichtbaar ? this.verhaal3d.kraak.positie() : null;
     if (id.startsWith('gids:')) { const h = this.hqs[id.slice(5)]; return h ? { x: h.p.x, y: 3, z: h.p.z } : null; }
     if (id === 'station') return { x: 0, y: 3, z: -2 };
     if (id === 'klasmeter') return { x: PLEIN.klasmeter.x, y: 3, z: PLEIN.klasmeter.z };
@@ -1321,7 +1373,7 @@ export class Stad3D {
   selecteer(id) {
     this.selectie = id;
     const p = this.positieVan(id);
-    this.selRing.visible = !!p && !id?.startsWith('gids:') && !id?.startsWith('geheim:') && id !== 'poort';
+    this.selRing.visible = !!p && !id?.startsWith('gids:') && !id?.startsWith('geheim:') && id !== 'poort' && id !== 'slijkkraak';
     if (p) { this.selRing.position.set(p.x, 0.1, p.z); const s = id === 'station' ? 4.2 : id?.startsWith('huis:') ? 0.75 : 1; this.selRing.scale.setScalar(s); }
   }
 
@@ -1398,19 +1450,27 @@ export class Stad3D {
     const w = this.weer3d?.tick(dt, this.t, this.cam) || { wind: 0.2, regen: 0, sneeuw: 0, mist: 0, windX: 0, windZ: 0 };
     this.weerSterkte = w;
     const zonDir = V3.copy(this.zon.position).sub(this.zon.target.position).normalize().clone();
+    this.verhaal3d?.tick(dt, this.t);
     this.water3d?.tick(dt, this.t, { nacht: this.nacht || 0, zonDir, wind: w.wind, windRichting: this.weerNu?.richting, top: this.luchtMat.uniforms.uTop.value, hor: this.luchtMat.uniforms.uHor.value });
     const helderFontein = this.water3d?.helder('fontein') ?? 0;
-    this.fontein?.tick(dt, this.t, helderFontein);
+    // de fontein spuit als het labo van de Werkplaats gehaald is, of met de code HELDER; tijdens de eindbaas niet
+    const vs = this.verhaal3d?.stand;
+    const fonteinAan = this.verhaal3d?.kraak.raid ? 0 : Math.max(helderFontein, vs?.w?.fonteinAan ? 1 : 0);
+    this.fontein?.tick(dt, this.t, fonteinAan);
     this.waterval?.tick(dt, this.t, helderFontein);
     this.geheimen?.tick(dt, this.t);
     this.blaadjes?.tick(dt, this.t, this.seizoen === 'herfst' ? 0.8 + w.wind * 0.2 : 0, { x: w.windX, z: w.windZ });
     // molenwieken en windvaan volgen de echte wind
     const snelheid = 0.25 + (w.wind || 0) * 2.6;
     for (const m of this.molens || []) { m.wieken.rotation.z = this.t * snelheid + m.fase; }
-    if (this.windvaan) this.windvaan.rotation.y = -((this.weerNu?.richting ?? 240) + 180) * Math.PI / 180;
+    if (this.windvaan) {
+      // kapot (week 1, tot het tweede labo): scheef en hij hapert; daarna draait hij mee met de echte wind van Brugge
+      if (vs?.w?.windvaanKapot) { this.windvaan.rotation.set(0, 2.2 + Math.sin(this.t * 0.7) * 0.08 + (Math.sin(this.t * 3.1) > 0.97 ? 0.15 : 0), 0.55); }
+      else this.windvaan.rotation.set(0, -((this.weerNu?.richting ?? 240) + 180) * Math.PI / 180, 0);
+    }
     // de sluisdeuren openen als de haven proper is
     const haven = this.water3d?.helder('haven') ?? 0;
-    const open = haven > 0.9 ? (Math.sin(this.t * 0.25) * 0.5 + 0.5) : 0;
+    const open = haven > 0.9 && !vs?.w?.sluisVast ? (Math.sin(this.t * 0.25) * 0.5 + 0.5) : 0;
     for (const d of this.sluisdeuren || []) d.rotation.y = d.userData.basis + (d.userData.zijde < 0 ? 1 : -1) * d.userData.voor * open * 1.35;
     // de lucht wordt grijzer bij veel wolken, en mistig weer dempt het zicht
     const grijs = clamp((w.wolken ?? 0.5) * 0.55 + (w.mist || 0) * 0.5, 0, 0.8);

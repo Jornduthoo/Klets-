@@ -2,6 +2,7 @@
 // Puur rekenwerk, geen tekenen. Wordt gedeeld door de leerlingenapp, het digibord en de 2D-terugvalkaart.
 import { doelStats, doelStatus, machtVanCode, klasXP } from '../core/model.js';
 import { waterStand } from './water.js';
+import { verhaalInvoer, verhaalStand, previewInvoer, previewWater } from './verhaal.js';
 import { themaVoor } from '../../data/themas.js';
 import { WIJKEN, WIJK, kavels, huisKavels, hqPositie, stadStraal, MIST_MIN, MIST_MAX } from './layout.js';
 
@@ -100,7 +101,11 @@ export function stadModel({ pupils = [], attempts = [], settings = {}, doelen = 
   // de Grijze Mist is weg: aan de rand van het dal blijft enkel nevel staan
   const mistRadius = MIST_MAX;
   // de waterstand van het thema: elk gehaald labo maakt een zone helder
-  const water = waterStand({ thema: th, attempts: echte, pupils, events });
+  let water = waterStand({ thema: th, attempts: echte, pupils, events });
+  // het verhaal in de stad (hoogwater, De Slijkkraak, wat er per week en per labo verandert); ?verhaal=w3start toont een voorbeeld
+  const pv = previewInvoer(verhaalVoorbeeld(), th);
+  if (pv) water = previewWater(pv, th);
+  const verhaal = verhaalStand(pv || verhaalInvoer({ thema: th, attempts: echte, pupils, settings, water }), water, th);
   const gebouwenThema = Object.entries(th?.gebouwen || {}).map(([id, g]) => ({
     id: 'plek:' + g.plek, gebouwId: id, naam: g.naam, kort: g.kort, plek: g.plek, gids: g.gids, week: g.week,
     labos: g.labos || [], interieur: g.interieur, uitleg: g.uitleg,
@@ -111,8 +116,13 @@ export function stadModel({ pupils = [], attempts = [], settings = {}, doelen = 
     doelXp: n * (settings.mistDoel || 1200), bevolking: leerlingen.length,
     aantalGebouwd: gebouwen.filter(g => g.gebouwd).length,
     water, themaGebouwen: gebouwenThema, thema: { id: th?.id, naam: th?.naam, stad: th?.stad, kleur: th?.kleur },
-    week: settings.huidigeWeek || 1,
+    week: pv ? pv.week : settings.huidigeWeek || 1, verhaal,
   };
+}
+
+/** De waarde van ?verhaal= (of ?voortgang=0..1) in de adresbalk, of null. */
+export function verhaalVoorbeeld() {
+  try { const q = new URLSearchParams(globalThis.location?.search || ''); return q.get('verhaal') ?? q.get('voortgang'); } catch { return null; }
 }
 
 /** Index doelcode -> missies die dat doel oefenen (alle routes). */

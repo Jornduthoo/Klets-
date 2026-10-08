@@ -85,3 +85,12 @@ body.digibord { background: #0d1030; color: #f4ead3; }
 /* thema- en weekkiezer in de kop van het dashboard */
 .kop-kiezer { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
 .kop-kiezer select { background: var(--perkament); color: var(--ink); border: 2px solid var(--ink); border-radius: 6px; padding: 5px 8px; font: inherit; font-weight: 700; min-width: 180px; }
+
+/* het verhaal van de week op het digibord (voor de Vonk) */
+.bs-verhaal { margin: 8px 0 2px; padding: 8px 10px; border-radius: 10px; background: rgba(107, 90, 46, .14); border-left: 6px solid #8a7438; max-width: 440px; }
+.bs-verhaal small { display: block; opacity: .8; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: .72em; }
+.bs-verhaal b { display: block; font-size: 1.15em; }
+.bs-verhaal p { margin: 3px 0 0; font-size: .92em; line-height: 1.35; }
+.bs-verhaal .bs-extra { font-weight: 700; }
+.verhaal-voorbeelden { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.verhaal-voorbeelden .btn { text-decoration: none; font-size: 0.85rem; padding: 4px 10px; }

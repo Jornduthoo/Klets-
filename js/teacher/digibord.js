@@ -17,7 +17,7 @@ import { waterTekst } from '../city/water.js';
 const store = createStore();
 const sync = createSync('klas');
 let THEMA = themaVoor();
-const VIEW = { soort: new URLSearchParams(location.search).get('view') === 'stad' ? 'stad' : 'raid', stad: null, laag: null, tijd: 'cyclus', weer: null };
+const VIEW = { soort: new URLSearchParams(location.search).get('view') === 'stad' ? 'stad' : 'raid', stad: null, laag: null, tijd: 'live', weer: null };
 const R = { raidId: null, naam: 'De eindbaas', status: 'klaar', hp: 0, maxHp: 0, juist: 0, joined: new Set(), seen: new Set(), autoHp: true, handHp: 60, shake: 0, flash: 0, parts: [], stralen: [], t: 0 };
 window.__raid = R;
 
@@ -109,7 +109,7 @@ async function toonStad() {
   VIEW.settings = settings;
   if (!VIEW.stad) { ui(); return; }
   VIEW.stad.update(VIEW.model);
-  if (!VIEW.tijdGezet) { VIEW.tijdGezet = true; VIEW.tijd = settings.dagNacht === 'dag' ? 'dag' : settings.dagNacht === 'nacht' ? 'nacht' : 'cyclus'; VIEW.stad.setTijd(VIEW.tijd); bouwLagen(); }
+  if (!VIEW.tijdGezet) { VIEW.tijdGezet = true; VIEW.tijd = settings.dagNacht === 'dag' ? 'dag' : settings.dagNacht === 'nacht' ? 'nacht' : 'live'; VIEW.stad.setTijd(VIEW.tijd); bouwLagen(); }
   const m = VIEW.model, info = $('#b-stadinfo');
   info.innerHTML = '';
   add(info, h('b', { class: 'bs-naam' }, settings.klasNaam || THEMA.stad),
@@ -123,13 +123,15 @@ async function toonStad() {
     h('div', { class: 'bs-zones' }, ...Object.values(m.water?.zones || {}).map(z => h('span', { class: 'bs-zone' + (z.helder >= 1 ? ' ok' : '') },
       h('b', {}, Math.round(z.helder * 100) + ' %'), h('small', {}, z.naam)))),
     h('div', { class: 'bs-wijken' }, ...m.wijken.map(w => h('span', { class: 'bs-wijk', style: { '--k': kleurVan(w.macht) } }, gidsBeeld(w.gids, { px: 26 }), `${w.naam}: ${w.gebouwd}`))),
-    VIEW.weer ? h('p', { class: 'bs-weer' }, 'Het echte weer in Brugge: ' + weerTekst(VIEW.weer)) : null);
+    m.verhaal?.actief ? h('div', { class: 'bs-verhaal' }, h('small', {}, m.verhaal.preview ? 'Voorbeeld: ' + (m.verhaal.stapNaam || m.verhaal.stap) : `Wat gebeurt er in ${settings.klasNaam || THEMA.stad}?`),
+      h('b', {}, m.verhaal.tekst.titel), h('p', {}, m.verhaal.tekst.zin), m.verhaal.tekst.extra ? h('p', { class: 'bs-extra' }, m.verhaal.tekst.extra) : null) : null,
+    VIEW.weer ? h('p', { class: 'bs-weer' }, VIEW.weer.bron === 'terugval' ? 'Geen live weer: de weerdienst is niet bereikbaar.' : 'Het echte weer in Brugge: ' + weerTekst(VIEW.weer)) : null);
 }
 const kleurVan = (m) => MACHT[m]?.kleur || '#888';
 function bouwLagen() {
   const box = $('#b-lagen'); if (!box) return; box.innerHTML = '';
   const lagen = [[null, 'Stad'], ['sterkte', 'Sterk en zwak'], ['wijken', 'Wijken']];
-  const tijden = [['cyclus', 'Dag en nacht'], ['dag', 'Dag'], ['avond', 'Avond'], ['nacht', 'Nacht']];
+  const tijden = [['live', 'Echte tijd'], ['dag', 'Dag'], ['avond', 'Avond'], ['nacht', 'Nacht']];
   add(box, h('div', { class: 'bl-groep', role: 'group', 'aria-label': 'Kaartlaag' }, ...lagen.map(([id, t]) => h('button', { type: 'button', class: 'btn klein' + (VIEW.laag === id ? ' primair' : ''), 'data-laag': id || 'geen', onclick: () => { VIEW.laag = id; VIEW.stad.setOverlay(id); bouwLagen(); } }, t))),
     h('div', { class: 'bl-groep', role: 'group', 'aria-label': 'Dag en nacht' }, ...tijden.map(([id, t]) => h('button', { type: 'button', class: 'btn klein' + (VIEW.tijd === id ? ' primair' : ''), onclick: () => { VIEW.tijd = id; VIEW.stad.setTijd(id); bouwLagen(); } }, t))),
     VIEW.laag ? h('p', { class: 'bl-uitleg' }, 'Groen = sterk, geel = goed op weg, oranje = hier oefenen we samen verder. Enkel aantallen, nooit namen.') : null);
@@ -155,6 +157,8 @@ function zetStorm(flits) {
   if (!VIEW.stad) return;
   const actief = R.status === 'actief' || R.status === 'lobby';
   VIEW.stad.setStorm(actief ? 0.35 + 0.65 * (R.hp / Math.max(1, R.maxHp)) : 0, { flits });
+  // De Slijkkraak in de stad: hij rijst op bij de Markt en krimpt bij elke treffer
+  VIEW.stad.setRaid?.({ status: R.status, hp: R.hp, maxHp: R.maxHp });
 }
 
 function start(kind) {

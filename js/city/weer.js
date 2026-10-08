@@ -4,14 +4,18 @@
 // Bron: Open-Meteo (gratis, geen sleutel nodig). We vragen enkel het huidige weer op, verversen hoogstens
 // elk kwartier en bewaren het antwoord in localStorage. Lukt de verbinding niet (geen internet op school,
 // een firewall), dan valt alles terug op rustig weer dat bij het seizoen past; er komt dan één waarschuwing
-// in de console en nergens een foutmelding voor de kinderen.
+// in de console en nergens een foutmelding voor de kinderen. De weerknop zegt dan wel eerlijk "Geen live weer":
+// de stad toont rustig seizoensweer, maar doet niet alsof dat het echte weer is. Elk kwartier proberen we opnieuw.
+// (Let op: wie de app in een strikt beveiligde iframe zet, moet connect-src https://api.open-meteo.com toelaten.)
 //
 // Testen of demonstreren: zet in de URL ?weer=regen|sneeuw|zon|mist|storm|bewolkt|fout en/of ?datum=2026-12-18.
+
+import { bruggeDelen } from './tijd.js';
 
 const BRUGGE = { lat: 51.2093, lon: 3.2247, naam: 'Brugge' };
 const URL = `https://api.open-meteo.com/v1/forecast?latitude=${BRUGGE.lat}&longitude=${BRUGGE.lon}`
   + '&current=temperature_2m,relative_humidity_2m,precipitation,rain,showers,snowfall,cloud_cover,'
-  + 'wind_speed_10m,wind_direction_10m,weather_code,is_day&timezone=Europe%2FBrussels';
+  + 'wind_speed_10m,wind_direction_10m,weather_code,is_day,snow_depth,surface_pressure&timezone=Europe%2FBrussels';
 const CACHE_KEY = 'vagant:weer:brugge';
 const VERVERS_MS = 15 * 60 * 1000;
 
@@ -60,7 +64,7 @@ export function terugval(seizoen = seizoenVoor(), d = new Date()) {
     lente: { temp: 13, wolken: 45, wind: 14, soort: 'bewolkt', tekst: 'Halfbewolkt' },
     zomer: { temp: 21, wolken: 25, wind: 11, soort: 'zon', tekst: 'Vooral zonnig' },
     herfst: { temp: 12, wolken: 65, wind: 20, soort: 'grijs', tekst: 'Bewolkt' } }[seizoen];
-  const u = d.getHours();
+  const u = bruggeDelen(d).h;
   return { ...basis, richting: 240, neerslag: 0, sneeuwval: 0, vocht: 80, dag: u >= 8 && u < 18 ? 1 : 0, code: null, bron: 'terugval', plaats: BRUGGE.naam, tijd: d.toISOString(), seizoen, kerstmarkt: kerstmarkt(d) };
 }
 
@@ -73,7 +77,8 @@ function uitAntwoord(json, nu = new Date()) {
     vocht: c.relative_humidity_2m ?? null,
     neerslag: c.precipitation ?? 0, regen: c.rain ?? 0, buien: c.showers ?? 0, sneeuwval: c.snowfall ?? 0,
     wolken: c.cloud_cover ?? 50, wind: Math.round(c.wind_speed_10m ?? 10), richting: c.wind_direction_10m ?? 240,
-    dag: c.is_day ?? 1, plaats: BRUGGE.naam, tijd: c.time || nu.toISOString(), bron: 'open-meteo',
+    sneeuwdek: c.snow_depth ?? 0, druk: c.surface_pressure ?? null,
+    dag: c.is_day ?? 1, plaats: BRUGGE.naam, tijd: c.time || nu.toISOString(), bron: 'open-meteo', opgehaald: Date.now(),
     seizoen: seizoenVoor(nu), kerstmarkt: kerstmarkt(nu),
   };
 }
@@ -119,7 +124,7 @@ export async function huidigWeer({ forceer = false, zoek } = {}) {
       return weer;
     } catch (e) {
       if (!gewaarschuwd) { gewaarschuwd = true; console.warn('Weer van Brugge niet opgehaald, de stad gebruikt rustig seizoensweer.', e?.message || e); }
-      if (cache?.weer) return { ...cache.weer, bron: 'cache-oud', seizoen: seizoenVoor(nu), kerstmarkt: kerstmarkt(nu) };
+      if (cache?.weer && Date.now() - cache.opgehaald < 6 * 3600e3) return { ...cache.weer, bron: 'cache-oud', opgehaald: cache.opgehaald, seizoen: seizoenVoor(nu), kerstmarkt: kerstmarkt(nu) };
       return terugval(seizoenVoor(nu), nu);
     } finally { bezig = null; }
   })();

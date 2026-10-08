@@ -127,6 +127,22 @@ body.in-stad { background: #9fd0f2; overflow: hidden; }
 
 .stad-wrap .raid-banner { top: 90px; z-index: 7; }
 
+/* ---------- "Wat gebeurt er in Zwinvliet?": het verhaal van de week ---------- */
+.verhaal-balk { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); z-index: 6;
+  background: linear-gradient(180deg, #fff7e2, #f4e6c2); border: 2px solid #6b5a2e; border-left: 10px solid #6b5a2e; border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(30, 24, 10, .35); padding: 10px 14px 12px; animation: vb-in .45s ease-out; transition: opacity .3s, transform .3s; }
+.verhaal-balk.weg { opacity: 0; transform: translate(-50%, -12px); }
+.verhaal-balk .vb-kop { display: grid; grid-template-columns: 1fr auto; align-items: start; column-gap: 8px; }
+.verhaal-balk .vb-kop small { grid-column: 1; color: #7a6332; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: .72em; }
+.verhaal-balk .vb-kop b { grid-column: 1; font-size: 1.22em; line-height: 1.15; color: #3b2f17; }
+.verhaal-balk .vb-kop button { grid-column: 2; grid-row: 1 / span 2; }
+.verhaal-balk p { margin: 6px 0 0; font-size: .95em; line-height: 1.4; }
+.verhaal-balk .vb-extra { color: #5d4b22; font-weight: 700; font-size: .88em; }
+.verhaal-balk .vb-knoppen { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+@keyframes vb-in { from { opacity: 0; transform: translate(-50%, -14px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (max-width: 700px) { .verhaal-balk { top: 118px; font-size: 15px; padding: 8px 10px 10px; } }
+@media (prefers-reduced-motion: reduce) { .verhaal-balk { animation: none; } }
+
 /* ---------- klasstad-overzicht ---------- */
 .wijk-tegels { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 10px 0; }
 .wijk-tegel { --k: #888; text-align: left; border: 2px solid var(--ink); border-left: 10px solid var(--k); border-radius: 8px; background: #fff; padding: 6px 10px; cursor: pointer; display: grid; }
