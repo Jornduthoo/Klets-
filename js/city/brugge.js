@@ -339,8 +339,9 @@ export function bootGeo(soort = 'rondvaart') {
     for (const z of [-0.75, -0.3, 0.15, 0.6]) b.box(0.66, 0.05, 0.16, 0, 0.06, z, '#a8743f');
     const kl = ['#e2643e', '#3d8fe0', '#f2c94c', '#38b37a', '#e9578a', '#ffffff', '#9a68e0', '#f0a531'];
     let k = 0;
-    for (const z of [-0.75, -0.3, 0.15, 0.6]) for (const dx of [-0.18, 0.18]) { b.box(0.13, 0.12, 0.12, dx, 0.1, z - 0.02, kl[k++ % kl.length]).bol(0.055, dx, 0.27, z - 0.02, '#f0c89a', 6); }
-    b.box(0.16, 0.14, 0.16, 0, 0.08, -1.15, '#e8e4da').bol(0.06, 0, 0.3, -1.15, '#d8a77a', 6);   // de schipper
+    // de passagiers en de schipper zitten: de boot blijft lager dan 0,30 (zie vaart.js, BOOT_MATEN)
+    for (const z of [-0.75, -0.3, 0.15, 0.6]) for (const dx of [-0.18, 0.18]) { b.box(0.13, 0.09, 0.12, dx, 0.07, z - 0.02, kl[k++ % kl.length]).bol(0.055, dx, 0.205, z - 0.02, '#f0c89a', 6); }
+    b.box(0.16, 0.1, 0.16, 0, 0.07, -1.15, '#e8e4da').bol(0.058, 0, 0.23, -1.15, '#d8a77a', 6);   // de schipper
     b.box(0.18, 0.14, 0.14, 0, -0.04, -1.32, '#2d3240');
     return b.bouw();
   }
@@ -350,10 +351,10 @@ export function bootGeo(soort = 'rondvaart') {
     b.box(0.76, 0.06, 0.4, 0, -0.06, 1.05, '#5a3e2a');
     b.ico(0.32, 0, 0.06, -0.25, '#4a4a26', 0, 0.55).ico(0.26, 0.12, 0.08, 0.3, '#5d5a2c', 0, 0.5);    // de berg slijk
     b.cil(0.1, 0.09, 0.16, -0.28, 0.06, 0.75, '#7a5232', 8);                                            // emmer
-    // de slijkvisser met zijn schep
-    b.box(0.05, 0.2, 0.05, 0.16, 0.08, 0.72, '#3d3a36').box(0.05, 0.2, 0.05, 0.26, 0.08, 0.72, '#3d3a36');
-    b.box(0.17, 0.25, 0.12, 0.21, 0.26, 0.72, '#8a3a2e').bol(0.06, 0.21, 0.57, 0.72, '#f0c89a', 6).cil(0.08, 0.08, 0.02, 0.21, 0.61, 0.72, '#c9a24b', 8).cil(0.04, 0.05, 0.06, 0.21, 0.62, 0.72, '#c9a24b', 6);
-    b.blok(0.025, 1.6, 0.025, 0.3, 0.42, 0.78, '#7a5c40', [0.5, 0, -0.5]).blok(0.14, 0.04, 0.16, 0.86, -0.45, 1.48, '#5a4636', [0.5, 0, -0.5]);
+    // de slijkvisser zit geknield met zijn schep plat over de boeg (zo vaart de schuit onder de bruggen)
+    b.box(0.2, 0.06, 0.16, 0.21, 0.06, 0.72, '#3d3a36');
+    b.box(0.17, 0.12, 0.12, 0.21, 0.1, 0.72, '#8a3a2e').bol(0.055, 0.21, 0.235, 0.72, '#f0c89a', 6).cil(0.075, 0.075, 0.015, 0.21, 0.25, 0.72, '#c9a24b', 8);
+    b.blok(0.025, 1.0, 0.025, 0.3, 0.16, 0.2, '#7a5c40', [Math.PI / 2 - 0.08, 0, 0]).blok(0.14, 0.03, 0.16, 0.3, 0.1, 1.12, '#5a4636');
     return b.bouw();
   }
   if (soort === 'kogge') {
@@ -370,8 +371,8 @@ export function bootGeo(soort = 'rondvaart') {
   if (soort === 'aak') {
     b.box(0.9, 0.3, 3.0, 0, -0.2, 0, '#2f4f3a').box(0.92, 0.04, 3.02, 0, 0.1, 0, '#c9a24b');
     b.box(0.7, 0.1, 1.7, 0, 0.1, 0.35, '#8a6a44');
-    for (const z of [-0.1, 0.5]) b.box(0.3, 0.12, 0.3, 0, 0.2, z, z > 0 ? '#e2643e' : '#3d8fe0');
-    b.box(0.5, 0.2, 0.45, 0, 0.1, -1.1, '#efe6d2').box(0.52, 0.03, 0.47, 0, 0.3, -1.1, '#3a3f4b');
+    for (const z of [-0.1, 0.5]) b.box(0.3, 0.09, 0.3, 0, 0.19, z, z > 0 ? '#e2643e' : '#3d8fe0');
+    b.box(0.5, 0.17, 0.45, 0, 0.1, -1.1, '#efe6d2').box(0.52, 0.03, 0.47, 0, 0.27, -1.1, '#3a3f4b');   // laag stuurhuisje: past onder de bruggen
     return b.bouw();
   }
   if (soort === 'roei') {

@@ -8,6 +8,7 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { rng, clamp, lerp } from '../core/util.js';
 import { WATERS, KADE, BERG_R, WEG_HALF, WATER_Y, VEST_R, PLEKKEN, inWater, oeverPunten, waterhuizen } from './layout.js';
 import { bruggen } from './wegen.js';
+import { Pad, vaarroutes, BRUG_KROON, BRUG_SEG, boogVorm } from './vaart.js';
 import { Bouwer } from './modellen.js';
 import { bootGeo, dierGeo, golfGeo, slijkvlekGeo, kaaiGeo, kaaitrapGeo } from './brugge.js';
 
@@ -108,23 +109,6 @@ void main(){
 }`;
 
 /** Een polylijn (lijst punten) met lengtes, om boten en dieren langs te laten varen. */
-class Pad {
-  constructor(pts, lus = false) {
-    this.pts = lus ? [...pts, pts[0]] : pts; this.lus = lus;
-    this.s = [0];
-    for (let i = 1; i < this.pts.length; i++) this.s.push(this.s[i - 1] + Math.hypot(this.pts[i].x - this.pts[i - 1].x, this.pts[i].z - this.pts[i - 1].z));
-    this.L = this.s[this.s.length - 1];
-  }
-  punt(s) {
-    s = this.lus ? ((s % this.L) + this.L) % this.L : clamp(s, 0, this.L);
-    let i = 1; while (i < this.s.length - 1 && this.s[i] < s) i++;
-    const a = this.pts[i - 1], b = this.pts[i], l = Math.max(1e-6, this.s[i] - this.s[i - 1]), u = (s - this.s[i - 1]) / l;
-    return { x: a.x + (b.x - a.x) * u, z: a.z + (b.z - a.z) * u, dx: (b.x - a.x) / l, dz: (b.z - a.z) / l };
-  }
-}
-const boog = (r, a0, a1, stap = 1.2) => { const n = Math.max(2, Math.ceil(Math.abs(a1 - a0) * r / stap)), uit = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; uit.push({ x: Math.cos(a) * r, z: Math.sin(a) * r }); } return uit; };
-const gr = (d) => d * Math.PI / 180;
-
 /** Alle water, de kaaien, de bruggen en wat er leeft. */
 export class Water3D {
   constructor(stad) {
@@ -251,10 +235,10 @@ export class Water3D {
     const S = br.lengte + 0.04, half = S / 2, wv = WEG_HALF + 0.24;
     const ux = br.dx, uz = br.dz, vx = -br.dz, vz = br.dx, ry = Math.atan2(ux, uz);
     const P = (u, v) => ({ x: br.x + ux * u + vx * v, z: br.z + uz * u + vz * v });
-    const kroon = -0.13, vrij = kroon - WATER_Y;
-    const n = 14, baks = ['#a9583f', '#b5634a', '#9e523a'], steen = '#ddd2bb', steen2 = '#cbbd9f';
+    const kroon = BRUG_KROON, vrij = kroon - WATER_Y;      // een korfboog met een vlakke kruin: de boten passen eronder (vaart.js)
+    const n = BRUG_SEG, baks = ['#a9583f', '#b5634a', '#9e523a'], steen = '#ddd2bb', steen2 = '#cbbd9f';
     for (let i = 0; i < n; i++) {
-      const u = -half + (i + 0.5) * S / n, t = u / half, ya = WATER_Y + vrij * Math.sqrt(Math.max(0, 1 - t * t)) - 0.02;
+      const u = -half + (i + 0.5) * S / n, t = u / half, ya = WATER_Y + vrij * boogVorm(t) - 0.02;
       const p = P(u, 0);
       b.box(wv * 2, -ya, S / n + 0.012, p.x, ya, p.z, baks[i % 3], ry);                      // gewelf en borstwering
       for (const k of [-1, 1]) { const q = P(u, k * (wv + 0.012)); b.box(0.03, 0.1, S / n + 0.012, q.x, ya - 0.005, q.z, steen, ry); }  // de witte boog
@@ -291,26 +275,8 @@ export class Water3D {
     const mat = this.mat;
     const P = (x, z) => ({ x, z });
     // vaarroutes (heen en terug, of een lus), elk met een thuiszone: daar moet het water een beetje proper zijn
-    const routes = [
-      { zone: 'reie-zuid', soort: 'reie', pad: new Pad([P(-0.9, 11.3), P(0.8, 13.0), P(0, 15.5), P(0, 26.0), P(2.8, 28.0), P(6.5, 29.4)]), v: 0.55 },
-      { zone: 'reie-noord', soort: 'reie', pad: new Pad([P(0.3, -11.6), P(0.3, -29.0), ...boog(VEST_R, gr(266), gr(184)), P(-27.5, -0.3), P(-11.6, -0.3)]), v: 0.6 },
-      { zone: 'reie-zuid', soort: 'reie', pad: new Pad([P(11.6, 0.3), P(29.2, 0.3), ...boog(VEST_R, gr(3), gr(72))]), v: 0.5 },
-      { zone: 'noordrei', soort: 'aak', pad: new Pad([P(0, -52.4), P(0, -31.2), ...boog(VEST_R, gr(272), gr(312))]), v: 0.4 },
-      { zone: 'minnewater', soort: 'roei', pad: new Pad(boog(1, 0, TAU * 0.98, 0.05).map(p => P(p.x * 4.6, 28.6 + p.z * 1.25)), true), v: 0.32 },
-      { zone: 'minnewater', soort: 'reie', pad: new Pad([...boog(VEST_R, gr(48), gr(132))]), v: 0.45 },
-      { zone: 'haven', soort: 'kogge', pad: new Pad([P(0, -61.5), P(-2, -72), P(-8, -88)]), v: 0.5, groot: true, altijd: true },
-      { zone: 'haven', soort: 'zeil', pad: new Pad(boog(1, 0, TAU * 0.98, 0.04).map(p => P(14 + p.x * 9, -82 + p.z * 5)), true), v: 0.7, altijd: true },
-      // slijkvissers: zolang het water vuil is, scheppen ze slijk uit de reien en de vesten
-      { zone: 'reie-zuid', soort: 'bagger', pad: new Pad([P(-0.5, 15.0), P(-0.5, 25.5)]), v: 0.18, vuil: true },
-      { zone: 'reie-zuid', soort: 'bagger', pad: new Pad([P(13.0, -0.4), P(26.5, -0.4)]), v: 0.16, vuil: true },
-      { zone: 'reie-noord', soort: 'bagger', pad: new Pad([P(0.4, -13.0), P(0.4, -26.5)]), v: 0.17, vuil: true },
-      { zone: 'reie-noord', soort: 'bagger', pad: new Pad([P(-13.0, 0.4), P(-26.5, 0.4)]), v: 0.15, vuil: true },
-      { zone: 'reie-noord', soort: 'bagger', pad: new Pad(boog(VEST_R + 0.6, gr(150), gr(210))), v: 0.2, vuil: true },
-      { zone: 'reie-zuid', soort: 'bagger', pad: new Pad(boog(VEST_R - 0.6, gr(-30), gr(30))), v: 0.2, vuil: true },
-      { zone: 'noordrei', soort: 'bagger', pad: new Pad([P(-0.4, -34), P(-0.4, -50)]), v: 0.16, vuil: true },
-      { zone: 'minnewater', soort: 'bagger', pad: new Pad(boog(1, 0, TAU * 0.98, 0.05).map(p => P(p.x * 3.2, 28.6 + p.z * 0.9)), true), v: 0.15, vuil: true },
-      { zone: 'noordrei', soort: 'bagger', pad: new Pad(boog(VEST_R, gr(240), gr(300))), v: 0.18, vuil: true },
-    ];
+    // de routes en de maten van de boten staan in vaart.js (tools/valideer-stad.mjs controleert dat ze onder de bruggen passen)
+    const routes = vaarroutes().map(rt => ({ ...rt, pad: new Pad(rt.pts, !!rt.lus) }));
     const geos = {};
     this.boten = routes.map((rt, i) => {
       const g = geos[rt.soort] || (geos[rt.soort] = bootGeo(rt.soort).body);

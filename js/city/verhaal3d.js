@@ -15,8 +15,9 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { rng, clamp, lerp } from '../core/util.js';
 import { Bouwer } from './modellen.js';
 import { bootGeo, dierGeo } from './brugge.js';
-import { WATERS, WATER_Y, PLEKKEN, MARKT_HUIZEN, PLEIN, VEST_R, inWater, oeverPunten } from './layout.js';
+import { WATERS, WATER_Y, PLEKKEN, MARKT_HUIZEN, PLEIN, inWater, oeverPunten } from './layout.js';
 import { Slijkkraak3D } from './slijkkraak3d.js';
+import { Pad, BYTE_ROUTE } from './vaart.js';
 
 const TAU = Math.PI * 2;
 const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V3 = new THREE.Vector3(), S3 = new THREE.Vector3(), E = new THREE.Euler(), K = new THREE.Color();
@@ -621,12 +622,22 @@ export class Verhaal3D {
     // masten en slijkbank volgen het peil
     for (const m of this.masten) { m.basisY = peil; }
     this.slijkbank.basisY = peil; this.slibplaat.basisY = peil; this.zandbank.basisY = peil;
-    // het zeilbootje met Byte vaart rond in de vesten
+    // het zeilbootje met Byte vaart heen en terug op de Oostvest: met zijn mast kan het niet onder de bruggen (vaart.js)
     if (this.zeilboot.obj.visible) {
-      this.zeilboot.s += dt * 0.55;
-      const a = this.zeilboot.s / VEST_R, wiebel = Math.sin(t * 1.4) * 0.05 * (1 + (stad.weerSterkte?.wind || 0) * 2);
-      this.zeilboot.obj.position.set(Math.cos(a) * (VEST_R - 0.6), peil, Math.sin(a) * (VEST_R - 0.6));
-      this.zeilboot.obj.rotation.set(0, -a, wiebel);
+      const zb = this.zeilboot;
+      zb.pad = zb.pad || new Pad(BYTE_ROUTE.pts);
+      zb.richting = zb.richting || 1;
+      if ((zb.wacht || 0) > 0) zb.wacht -= dt;
+      else {
+        zb.s += dt * BYTE_ROUTE.v * zb.richting;
+        if (zb.s > zb.pad.L || zb.s < 0) { zb.s = clamp(zb.s, 0, zb.pad.L); zb.richting = -zb.richting; zb.wacht = 2.5; }
+      }
+      const p = zb.pad.punt(zb.s), wiebel = Math.sin(t * 1.4) * 0.05 * (1 + (stad.weerSterkte?.wind || 0) * 2);
+      const doelYaw = Math.atan2(p.dx * zb.richting, p.dz * zb.richting);
+      let d = doelYaw - (zb.yaw ?? doelYaw); d = Math.atan2(Math.sin(d), Math.cos(d));
+      zb.yaw = (zb.yaw ?? doelYaw) + d * (1 - Math.exp(-dt * 1.6));       // rustig keren aan het einde
+      zb.obj.position.set(p.x, peil, p.z);
+      zb.obj.rotation.set(0, zb.yaw, wiebel);
     }
     // riet: bruin en plat, of groen en recht
     this.rietGroen = lerp(this.rietGroen, w.rietGroen ? 1 : 0, 1 - Math.exp(-dt * 0.8));
