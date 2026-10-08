@@ -188,6 +188,16 @@ function showCreator({ pupil = null, onKlaar = null } = {}) {
   }
 }
 
+/** Je reiziger aanpassen (haar, kleren, ...): alle vensters dicht, de stad weg, de reizigermaker open. Bewaren of terug brengt je naar de stad. */
+function pasReizigerAan() {
+  if (S.pupil?.leerkracht) { toast('Als leerkracht heb je geen eigen reiziger. Meld je aan als reiziger om er een te maken.'); return; }
+  stopSpreken();
+  document.querySelectorAll('.overlay').forEach(o => o.remove());
+  clearInterval(S.praatIv); clearTimeout(S.ballonT); clearTimeout(S.verhaalT);
+  showCreator({ pupil: S.pupil });
+}
+const SVG_POTLOOD = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/></svg>';
+
 // ---------- de stad ----------
 const GIDS_VOLGORDE = ['atlas', 'woordje', 'tella', 'kroniek', 'bram', 'byte'];
 const TIJDEN = [['live', 'Echte tijd in Brugge', 'cyclus'], ['cyclus', 'Snelle dag-en-nachtlus', 'cyclus'], ['dag', 'Dag', 'zon'], ['avond', 'Avond', 'avond'], ['nacht', 'Nacht', 'maan']];
@@ -196,6 +206,7 @@ const WEER_ICO = { regen: 'regen', motregen: 'regen', buien: 'regen', sneeuw: 's
 
 async function enterWorld() {
   stopSpreken(); zetReiziger(S.pupil);
+  if (S.stad) { try { S.stad.dispose?.(); } catch { /* al weg */ } S.stad = null; }
   S.pupils = await store.listPupils();
   document.body.classList.remove('in-aanmelden');
   const app = $('#app'); app.innerHTML = '';
@@ -316,7 +327,9 @@ async function bouwStad({ eerste = false, vlieg = false } = {}) {
 
 function bouwTopbalk(top) {
   top.append(
-    h('div', { class: 'top-ik' }, h('div', { id: 'hud-avatar', class: 'top-avatar' }), h('div', { class: 'top-ik-tekst' }, h('b', { id: 'hud-naam' }), h('small', { id: 'hud-rang' }), h('div', { class: 'balkje' }, h('span', { id: 'hud-xp' })))),
+    h('button', { type: 'button', class: 'top-ik', id: 'btn-ik', title: 'Pas je reiziger aan', 'aria-label': 'Pas je reiziger aan', onclick: pasReizigerAan },
+      h('div', { id: 'hud-avatar', class: 'top-avatar' }), h('span', { class: 'top-potlood', 'aria-hidden': 'true', html: SVG_POTLOOD }),
+      h('div', { class: 'top-ik-tekst' }, h('b', { id: 'hud-naam' }), h('small', { id: 'hud-rang' }), h('div', { class: 'balkje' }, h('span', { id: 'hud-xp' })))),
     h('div', { class: 'top-stad', title: 'De klasmeter: alle XP van de klas samen' },
       h('div', { class: 'top-stadnaam' }, h('b', { id: 'hud-stadnaam' }, stadNaam()), h('small', { id: 'hud-thema' }, THEMA.naam)),
       h('div', { class: 'top-cijfers' },
@@ -346,6 +359,7 @@ function bouwWerkbalk(balk) {
     knop('btn-labos', 'labo', 'Labo\'s', () => openLaboLijst()),
     knop('btn-adviseurs', 'adviseurs', 'Gidsen', () => openGidsenLijst()),
     knop('btn-lagen', 'lagen', 'Kaartlagen', () => wisselLaag()),
+    knop('btn-reiziger', 'reiziger', 'Mijn reiziger', () => pasReizigerAan()),
     knop('btn-huis', 'huis', 'Mijn huis', () => openHuis()),
     knop('btn-kluis', 'kluis', 'Codekluis', () => openKluis()),
     knop('btn-stad', 'stad', 'Klasstad', () => openKlasstad()),
@@ -496,7 +510,7 @@ async function toonInfo(id) {
     add(k, kop(hu.ik ? 'Jouw huis' : `Huis van ${hu.naam}`, 'Reizigerswijk', '#e9a23b', avatarPortret(hu.look, 48)),
       h('p', {}, deco.length ? 'Versierd met: ' + deco.map(d => HUISDECOR[d]).filter(Boolean).join(', ') + '.' : (hu.ik ? 'Je huis is nog niet versierd. Codes uit je Logboek geven versiering.' : 'Een gezellig huis in de Reizigerswijk.')),
       hu.ik ? h('div', { class: 'ik-knoppen' }, h('button', { type: 'button', class: 'btn primair', onclick: () => openHuis() }, 'Versier je huis'),
-        h('button', { type: 'button', class: 'btn', onclick: () => showCreator({ pupil: S.pupil }) }, 'Pas je reiziger aan')) : null);
+        h('button', { type: 'button', class: 'btn', onclick: () => pasReizigerAan() }, 'Pas je reiziger aan')) : null);
     return;
   }
   if (id === 'slijkkraak') {
@@ -879,7 +893,8 @@ async function openKluis() {
     const gar = h('div', { class: 'garderobe' }, prevBox, h('div', { class: 'gar-slots' }, ...Object.entries(slots).map(([slot, ids]) => h('div', { class: 'keuze-rij' }, h('span', { class: 'rij-lbl' }, SLOTNAMEN[slot] || slot),
       h('div', { class: 'stalen' }, h('button', { type: 'button', class: 'staal tekst' + (!p.look.uitrusting?.[slot] ? ' sel' : ''), onclick: () => equip(slot, null) }, 'Geen'),
         ...ids.map(id => h('button', { type: 'button', class: 'staal tekst' + (p.look.uitrusting?.[slot] === id ? ' sel' : ''), title: UITRUSTING[id].uitleg || '', onclick: () => equip(slot, id) }, UITRUSTING[id].naam)))))));
-    add(pan.body, h('h3', {}, 'Garderobe'), mine.length ? gar : h('p', { class: 'tip' }, 'Nog leeg. Haal een labo of vind een geheime code: dan krijg je uitrusting.'));
+    add(pan.body, h('div', { class: 'lees-rij' }, h('h3', {}, 'Garderobe'), !p.leerkracht ? h('button', { type: 'button', class: 'btn primair klein', id: 'kluis-reiziger', onclick: () => pasReizigerAan() }, 'Pas je reiziger aan') : null),
+      mine.length ? gar : h('p', { class: 'tip' }, 'Nog leeg. Haal een labo of vind een geheime code: dan krijg je uitrusting.'));
     if (mine.length && !p.leerkracht) add(pan.body, h('p', { class: 'tip' }, 'Je kan je huis ook versieren. ', h('button', { type: 'button', class: 'btn klein', onclick: () => { pan.close(); openHuis(); } }, 'Versier je huis')));
     setTimeout(() => inp.focus(), 30);
   }
@@ -920,7 +935,7 @@ async function openHuis() {
     const mine = (S.pupil.kosmetiek || []).filter(id => HUISDECOR[id]);
     const deco = { ...(S.pupil.huis?.deco || {}) };
     add(pan.body, h('div', { class: 'gids-zegt' }, gidsPortret('bram', 3), h('p', {}, 'Dit is jouw plek in de Reizigerswijk. Het dak heeft de kleur van je jas. Met extraatjes uit de Codekluis versier je je huis.')),
-      h('div', { class: 'knoppen' }, h('button', { type: 'button', class: 'btn primair', onclick: () => showCreator({ pupil: S.pupil }) }, 'Pas je reiziger aan')));
+      h('div', { class: 'knoppen' }, h('button', { type: 'button', class: 'btn primair', onclick: () => pasReizigerAan() }, 'Pas je reiziger aan')));
     if (!mine.length) { add(pan.body, h('p', { class: 'tip' }, 'Nog geen versiering. Vind geheime codes in je Expeditieboek en typ ze in de Codekluis.')); return; }
     add(pan.body, h('div', { class: 'stalen huis-deco' }, ...mine.map(id => h('button', { type: 'button', class: 'staal tekst' + (deco[id] ? ' sel' : ''), 'aria-pressed': String(!!deco[id]), onclick: () => zet(id, !deco[id]) }, HUISDECOR[id]))),
       h('p', { class: 'tip' }, 'Klik om aan of uit te zetten. Je ziet het meteen in de stad.'));
