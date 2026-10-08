@@ -110,7 +110,7 @@ function laadManifest() {
 }
 if (typeof window !== 'undefined') laadManifest();
 // Een clip is een los bestand ("<sleutel>.mp3") of een stuk uit een pakket: [pakket, begin, lengte].
-// Pakketten (audio/stem/pak-NN.bin) worden pas geladen als er een clip uit nodig is, en maar één keer.
+// Pakketten (audio/stem/pak-NN.mp3) worden pas geladen als er een clip uit nodig is, en maar één keer.
 const pakken = new Map(), clipUrls = new Map();
 function clipVoor(tekst) {
   const k = stemSleutel(tekst), f = manifest?.clips.get(k);
