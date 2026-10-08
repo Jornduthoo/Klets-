@@ -218,32 +218,95 @@ export function fonteinGebouw() {
   return b.bouw();
 }
 
-/** Een boogbrug over een rei. breedte = de vrije overspanning. */
-export function brugGeo(breedte = 4.6, wegBreed = 2.3) {
-  const b = new Bouwer('brug'); b.ao = false;
-  const steen = '#c9b89a', bst = '#b9755a';
-  const n = 10;
-  for (let i = 0; i < n; i++) {
-    const u = (i + 0.5) / n, x = (u - 0.5) * breedte;
-    const y = Math.sin(u * Math.PI) * 0.42;
-    b.box(breedte / n + 0.02, 0.18, wegBreed, x, y, 0, i % 2 ? steen : tint(steen, 1.04));
-    for (const dz of [-1, 1]) b.box(breedte / n + 0.02, 0.3, 0.14, x, y + 0.18, dz * (wegBreed / 2 - 0.07), bst);
-  }
-  for (const dx of [-1, 1]) b.box(0.3, 0.5, wegBreed + 0.2, dx * breedte / 2, -0.2, 0, steen);
+/** Kaaimuur: een stuk bakstenen wal (lengte 1, wordt geschaald) met een stenen rand. Lokaal: z = 0 is de waterkant, +z is het land. */
+export function kaaiGeo() {
+  const b = new Bouwer('kaai'); b.ao = false;
+  b.box(1, 1.31, 0.35, 0, -1.28, 0.175, '#a65a40');                // baksteen
+  b.box(1, 0.06, 0.012, 0, -0.98, -0.004, '#8f4c36').box(1, 0.06, 0.012, 0, -0.72, -0.004, '#8f4c36');   // voegen
+  b.box(1, 0.1, 0.46, 0, -0.05, 0.16, '#d6ccb6');                  // blauwe hardsteen als dekrand
+  b.box(1, 0.09, 0.02, 0, -0.56, -0.008, '#4c5034');               // groene waterlijn
+  return b.bouw().body;
+}
+/** Een kaaitrap: treden langs de muur naar het water. Lokaal zoals kaaiGeo (de trap ligt aan de waterkant, z < 0). */
+export function kaaitrapGeo() {
+  const b = new Bouwer('kaaitrap'); b.ao = false;
+  const n = 5;
+  for (let i = 0; i < n; i++) b.box(0.26, 0.62 - i * 0.11, 0.34, -0.55 + i * 0.26, -0.62, -0.17, i % 2 ? '#cfc4ad' : '#c4b89f');
+  b.box(0.5, 0.1, 0.36, 0.86, -0.56, -0.18, '#b9ad94');           // bordes aan het water
+  b.cil(0.025, 0.025, 0.55, -0.68, 0.0, -0.02, '#3a3f4b', 5).cil(0.025, 0.025, 0.55, 0.62, -0.4, -0.02, '#3a3f4b', 5);   // leuning
   return b.bouw().body;
 }
 
-/** Kaaimuur: een recht stuk bakstenen wal met een rand. */
-export function kadeGeo(lengte = 4, hoogte = 0.9) {
-  const b = new Bouwer('kade'); b.ao = false;
-  b.box(lengte, hoogte, 0.36, 0, -hoogte, 0, '#a86a4e');
-  b.box(lengte, 0.12, 0.5, 0, -0.1, 0.02, '#cfc6b4');
+/** Een smal Brugs huis aan het water: de gevel (+z) rijst recht uit het water, met een trapgevel voor en achter. */
+export function waterhuisGeo(variant = 0, { basis = -0.78, hoog = 2.0, breed = 0.96, diep = 1.35 } = {}) {
+  const b = new Bouwer('waterhuis' + variant + basis);
+  const muren = ['#b4553c', '#efe6d2', '#c46a48', '#d9b26f', '#9c4a36', '#e7dcc4'];
+  const daken = ['#5f3a33', '#6f4a44', '#4f3c3a', '#7d4136', '#584845', '#6a3e34'];
+  const kl = muren[variant % muren.length], dk = daken[(variant * 5) % daken.length];
+  const w = breed, d = diep, h = hoog;
+  b.box(w, h - basis, d, 0, basis, 0, kl);
+  if (basis < 0) b.box(w + 0.02, 0.22 - basis * 0.2, d + 0.02, 0, basis, 0, '#7b7d70');      // natte stenen voet
+  b.dak(w + 0.06, 0.6, d + 0.06, 0, h, 0, dk, Math.PI / 2);
+  const treden = 3 + (variant % 2);
+  for (const z of [d / 2 - 0.06, -d / 2 + 0.06]) trapgevel(b, w, h, z, variant === 1 || variant === 5 ? '#c9b48e' : kl, treden);
+  // ramen in de gevel naar het water en naar achter, met hier en daar een bloembak
+  const verd = Math.max(2, Math.round(h / 0.62));
+  b.ramenRond(w, d, 0, 0, 0.22, verd, h / (verd + 0.4), 2, 0.2, 0.3, [0, 2]);
+  b.raam(0.14, 0.2, 0.03, 0, h + 0.28, d / 2 + 0.01, 0, 0.4);
+  if (basis < 0) b.box(0.36, 0.3, 0.03, (variant % 3 - 1) * 0.22, basis + 0.28, d / 2 + 0.005, '#2a2f38');   // poortje naar het water
+  else b.box(0.3, 0.52, 0.04, 0, 0, d / 2 + 0.01, '#5d3a2a');                                                      // voordeur
+  if (variant % 2 === 0) b.box(0.42, 0.07, 0.12, 0, 0.62, d / 2 + 0.05, '#7a4a34').bol(0.06, -0.12, 0.72, d / 2 + 0.07, '#ff6f91', 6).bol(0.06, 0.1, 0.72, d / 2 + 0.07, '#ffd166', 6);
+  if (variant === 3) b.box(w * 0.7, 0.05, 0.22, 0, 1.05, d / 2 + 0.1, '#3a3f4b');        // smal balkon
+  return b.bouw();
+}
+
+/** Een terrasje op de Markt: tafeltje, twee stoelen en een parasol. */
+export function terrasGeo(parasol = '#c8403c') {
+  const b = new Bouwer('terras' + parasol); b.ao = false;
+  b.cil(0.24, 0.24, 0.04, 0, 0.4, 0, '#f4efe2', 10).cil(0.03, 0.05, 0.4, 0, 0, 0, '#3a3f4b', 6);
+  for (const dx of [-0.42, 0.42]) b.box(0.22, 0.04, 0.22, dx, 0.24, 0, '#3a3f4b').box(0.04, 0.26, 0.22, dx + Math.sign(dx) * 0.1, 0.24, 0, '#3a3f4b');
+  b.cil(0.015, 0.015, 0.9, 0, 0.42, 0, '#e8e2d6', 5);
+  b.kegel(0.62, 0.26, 0, 1.18, 0, parasol, 8);
+  b.cil(0.62, 0.6, 0.05, 0, 1.13, 0, '#f4efe2', 8);
+  return b.bouw().body;
+}
+
+/** Een havenkraan op de kaai. */
+export function havenkraanGeo() {
+  const b = new Bouwer('havenkraan'); b.ao = false;
+  const g = '#e2a33c', d = '#4a5162';
+  for (const [x, z] of [[-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6], [0.6, 0.6]]) b.box(0.14, 2.2, 0.14, x, 0, z, g);
+  b.box(1.5, 0.2, 1.5, 0, 2.2, 0, g).box(0.9, 0.7, 1.0, 0, 2.4, 0.1, '#efe6d2').box(0.92, 0.25, 0.4, 0, 2.7, 0.62, '#8fbbe0');
+  b.box(0.22, 0.22, 4.6, 0, 3.0, -1.6, g).box(0.1, 1.4, 0.1, 0, 3.1, 0.7, d).box(0.04, 1.6, 0.04, 0, 1.45, -3.6, d).box(0.4, 0.2, 0.3, 0, 1.3, -3.6, '#3d8fe0');
   return b.bouw().body;
 }
 
 /** Rondvaartboot (open bootje met bankjes) en een vrachtschip voor de haven. */
 export function bootGeo(soort = 'rondvaart') {
   const b = new Bouwer('boot-' + soort); b.ao = false;
+  if (soort === 'reie') {
+    // een laag Brugs rondvaartbootje: het moet onder de bruggen door
+    b.box(0.82, 0.26, 2.5, 0, -0.16, 0, '#2f4f6a').box(0.84, 0.04, 2.52, 0, 0.08, 0, '#efe6d2');
+    b.box(0.6, 0.12, 0.5, 0, -0.04, 1.1, '#2f4f6a');
+    for (const z of [-0.75, -0.3, 0.15, 0.6]) b.box(0.66, 0.05, 0.16, 0, 0.06, z, '#a8743f');
+    const kl = ['#e2643e', '#3d8fe0', '#f2c94c', '#38b37a', '#e9578a', '#ffffff', '#9a68e0', '#f0a531'];
+    let k = 0;
+    for (const z of [-0.75, -0.3, 0.15, 0.6]) for (const dx of [-0.18, 0.18]) { b.box(0.13, 0.12, 0.12, dx, 0.1, z - 0.02, kl[k++ % kl.length]).bol(0.055, dx, 0.27, z - 0.02, '#f0c89a', 6); }
+    b.box(0.16, 0.14, 0.16, 0, 0.08, -1.15, '#e8e4da').bol(0.06, 0, 0.3, -1.15, '#d8a77a', 6);   // de schipper
+    b.box(0.18, 0.14, 0.14, 0, -0.04, -1.32, '#2d3240');
+    return b.bouw();
+  }
+  if (soort === 'aak') {
+    b.box(0.9, 0.3, 3.0, 0, -0.2, 0, '#2f4f3a').box(0.92, 0.04, 3.02, 0, 0.1, 0, '#c9a24b');
+    b.box(0.7, 0.1, 1.7, 0, 0.1, 0.35, '#8a6a44');
+    for (const z of [-0.1, 0.5]) b.box(0.3, 0.12, 0.3, 0, 0.2, z, z > 0 ? '#e2643e' : '#3d8fe0');
+    b.box(0.5, 0.2, 0.45, 0, 0.1, -1.1, '#efe6d2').box(0.52, 0.03, 0.47, 0, 0.3, -1.1, '#3a3f4b');
+    return b.bouw();
+  }
+  if (soort === 'roei') {
+    b.box(0.42, 0.14, 1.1, 0, -0.1, 0, '#8a5a33').box(0.44, 0.03, 1.12, 0, 0.04, 0, '#c9a77a').box(0.38, 0.03, 0.12, 0, 0.0, 0.1, '#c9a77a');
+    return b.bouw();
+  }
   if (soort === 'vracht') {
     b.box(1.5, 0.5, 4.6, 0, -0.18, 0, '#3f6b8c').box(1.3, 0.2, 4.2, 0, 0.32, 0, '#2f5570');
     b.box(1.0, 0.7, 1.0, 0, 0.32, -1.6, '#e8e4da').glasband(1.02, 1.02, 0, -1.6, 0.8, 0.3, 1);
@@ -415,7 +478,7 @@ export function waterstraalGeo() {
 /** Slijk dat op het water drijft (verdwijnt als de zone helder wordt). */
 export function slijkvlekGeo(seed = 0) {
   const b = new Bouwer('slijkvlek' + seed); b.ao = false;
-  for (let i = 0; i < 4; i++) b.ico(0.5 + b.r() * 0.5, (b.r() - 0.5) * 1.4, 0, (b.r() - 0.5) * 1.4, i % 2 ? '#6e7a4a' : '#7d8a52', 1, 0.16);
+  for (let i = 0; i < 4; i++) b.ico(0.22 + b.r() * 0.22, (b.r() - 0.5) * 0.9, 0, (b.r() - 0.5) * 0.9, i % 2 ? '#a69a62' : '#8e9a58', 1, 0.08);
   if (seed % 2) b.box(0.18, 0.1, 0.1, 0.3, 0.06, 0.2, '#d8e4ea');   // een plastic flesje
   return b.bouw().body;
 }

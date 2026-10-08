@@ -3,8 +3,8 @@
 // en wachten voor de slagbomen als de trein komt.
 import * as THREE from '../../vendor/three.module.min.js';
 import { rng, clamp } from '../core/util.js';
-import { RINGEN, RIJBAAN, STOEP, WEG_HALF, RIJSTROOK, SPOOR_HALF, SPOOR_SPOREN, SPOOR_X, LAAN_HOEKEN, polar, hoekVerschil } from './layout.js';
-import { wegennet, takPunt, rijPunt, takLijn, KRUIS } from './wegen.js';
+import { RINGEN, RIJBAAN, STOEP, WEG_HALF, RIJSTROOK, SPOOR_Z, SPOOR_HALF, SPOOR_SPOREN, SPOOR_X, LAAN_HOEKEN, polar, hoekVerschil, inWater } from './layout.js';
+import { wegennet, takPunt, rijPunt, takLijn, KRUIS, bruggen } from './wegen.js';
 import { Bouwer, autoGeo, lampGeo } from './modellen.js';
 import { koetsGeo, fietsGeo } from './brugge.js';
 
@@ -229,7 +229,7 @@ export class Wegen3D {
     if (this.lichten.instanceColor) this.lichten.instanceColor.needsUpdate = true;
   }
   _zetDwarsliggers() {
-    const L = SPOOR_X * 2 + 12;
+    const L = SPOOR_X * 2 + 3;
     if (!this.liggers) {
       const n = Math.floor(L / 0.7) * 2;
       this.liggers = new THREE.InstancedMesh(new THREE.BoxGeometry(0.18, 0.06, 0.78), new THREE.MeshLambertMaterial({ color: '#7a5f48' }), n);
@@ -240,7 +240,7 @@ export class Wegen3D {
     for (const tz of SPOOR_SPOREN) for (let x = -L / 2; x < L / 2; x += 0.7) {
       if (vrij.some(v => Math.abs(v - x) < WEG_HALF + 0.08)) continue;
       if (k >= this.liggers.instanceMatrix.count) break;
-      M4.makeTranslation(x, 0.04, tz); this.liggers.setMatrixAt(k++, M4);
+      M4.makeTranslation(x, 0.04, SPOOR_Z + tz); this.liggers.setMatrixAt(k++, M4);
     }
     this.liggers.count = k; this.liggers.instanceMatrix.needsUpdate = true; this.liggers.computeBoundingSphere();
   }
@@ -249,12 +249,16 @@ export class Wegen3D {
   _bouwLampen() {
     const pos = [];
     const knoopHoeken = LAAN_HOEKEN;
+    // geen lantaarn in het water of op een brug (daar staan de brugpijlers)
+    const brug = bruggen();
+    const nat = (x, z) => inWater(x, z, 0.5) || brug.some(b => Math.hypot(b.x - x, b.z - z) < b.lengte / 2 + 1.4);
     // langs de ringen, op de buitenste stoep
     for (const R of RINGEN) {
       const n = Math.floor(TAU * R / 4.4);
       for (let i = 0; i < n; i++) {
         const a = i / n * TAU + 0.21, p = polar(R + RIJBAAN / 2 + 0.12, a);
-        if (Math.abs(p.z) < SPOOR_HALF + 1.2) continue;
+        if (Math.abs(p.z - SPOOR_Z) < SPOOR_HALF + 1.2 && Math.abs(p.x) < SPOOR_X + 2) continue;
+        if (nat(p.x, p.z)) continue;
         if (knoopHoeken.some(h => Math.abs(hoekVerschil(a, h)) * R < KRUIS + 0.8)) continue;
         pos.push({ x: p.x, z: p.z, R, armX: -Math.cos(a), armZ: -Math.sin(a) });
       }
@@ -263,8 +267,9 @@ export class Wegen3D {
     for (const a of LAAN_HOEKEN) for (let i = 0; i < RINGEN.length - 1; i++) {
       for (let r = RINGEN[i] + KRUIS + 1.6; r < RINGEN[i + 1] - KRUIS - 1.2; r += 4.4) {
         const zij = (Math.round(r) % 2) ? 1 : -1, nx = -Math.sin(a) * zij, nz = Math.cos(a) * zij;
-        const p = polar(r, a);
-        pos.push({ x: p.x + nx * (RIJBAAN / 2 + 0.12), z: p.z + nz * (RIJBAAN / 2 + 0.12), R: RINGEN[i + 1], armX: -nx, armZ: -nz });
+        const p = polar(r, a), lx = p.x + nx * (RIJBAAN / 2 + 0.12), lz = p.z + nz * (RIJBAAN / 2 + 0.12);
+        if (nat(lx, lz)) continue;
+        pos.push({ x: lx, z: lz, R: RINGEN[i + 1], armX: -nx, armZ: -nz });
       }
     }
     pos.sort((p, q) => p.R - q.R);

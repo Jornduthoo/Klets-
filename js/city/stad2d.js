@@ -1,10 +1,11 @@
 // Terugvalkaart zonder WebGL: dezelfde stad, isometrisch getekend op een 2D-canvas.
 // Zelfde methodes als Stad3D (update, setOverlay, markers, focus ...), zodat de app niets merkt.
 import { clamp, lerp, rng } from '../core/util.js';
-import { PLEIN_R, DAL_R, SPOOR_HALF, SPOOR_SPOREN, WEG_HALF, RIJBAAN, WIJKEN, KLEUR, PLEIN, POORT, PLEKKEN, MOLENS, WATERS, KADE, bruggen, kavels, hqPositie, gidsPlek, polar, stadStraal, isVrijVoorBoom } from './layout.js';
+import { PLEIN_R, DAL_R, SPOOR_Z, SPOOR_X, SPOOR_HALF, SPOOR_SPOREN, WEG_HALF, RIJBAAN, WIJKEN, KLEUR, PLEIN, POORT, TUNNEL_WEST, PLEKKEN, MOLENS, WATERS, KADE, kavels, hqPositie, gidsPlek, polar, stadStraal, isVrijVoorBoom, waterVeelhoek, waterMidden, waterhuizen, MARKT_HUIZEN } from './layout.js';
 import { sterktes } from './weer.js';
-import { wegennet, takLijn, KRUIS } from './wegen.js';
+import { wegennet, takLijn, KRUIS, bruggen } from './wegen.js';
 import { AVATAR_OPTIES, dakKleur } from '../figuren/uiterlijk.js';
+import { plaatsMarkers } from './markers.js';
 
 const TAU = Math.PI * 2;
 const HOOGTE = [1.1, 2.3, 4.2, 7.5];
@@ -72,11 +73,12 @@ export class Stad2D {
   positieVan(id) {
     if (!id) return null;
     if (id.startsWith('gids:')) { const w = WIJKEN.find(x => x.gids === id.slice(5)); if (!w) return null; const p = hqPositie(w); return { x: p.x, y: 3, z: p.z }; }
-    if (id.startsWith('plek:')) { const pl = PLEKKEN[id.slice(5)]; return pl ? { x: pl.x, y: 2.4, z: pl.z } : null; }
-    if (id.startsWith('water:')) { const wz = WATERS.find(x => x.zone === id.slice(6)); return wz ? { x: wz.x, y: 0.4, z: wz.z ?? (wz.z0 + wz.z1) / 2 } : null; }
+    if (id.startsWith('plek:')) { const pl = PLEKKEN[id.slice(5)]; return pl ? { x: pl.x, y: Math.min(4, (pl.labelY ?? 3) * 0.6), z: pl.z } : null; }
+    if (id.startsWith('water:')) { const wz = WATERS.find(x => x.zone === id.slice(6) || x.id === id.slice(6)); if (!wz) return null; const m = waterMidden(wz); return { x: m.x, y: 0.4, z: m.z }; }
     if (id === 'station') return { x: 0, y: 3, z: -2 };
     if (PLEIN[id]) return { x: PLEIN[id].x, y: 2, z: PLEIN[id].z };
     if (id === 'poort') return { x: POORT.x, y: 6, z: POORT.z };
+    if (id === 'trein') return { x: PLEKKEN.station.x, y: 2, z: PLEKKEN.station.z };
     const g = this.model?.gebouwen.find(x => x.id === id); if (g?.slot) return { x: g.slot.x, y: 2, z: g.slot.z };
     const h = this.model?.huizen.find(x => x.id === id); if (h) return { x: h.slot.x, y: 1.5, z: h.slot.z };
     return null;
@@ -124,10 +126,13 @@ export class Stad2D {
     this.storm = lerp(this.storm, this.stormDoel || 0, k);
     const fase = this.tijdMode === 'nacht' ? 0.8 : this.tijdMode === 'avond' ? 0.5 : this.tijdMode === 'dag' ? 0 : (Math.sin(this.t / 300 * TAU) < -0.6 ? 0.8 : 0);
     this.nacht = lerp(this.nacht, fase, k * 0.3);
-    for (const { el, pos } of this.markers.values()) {
+    const items = [];
+    for (const m of this.markers.values()) {
+      const { el, pos } = m;
       const p = typeof pos === 'string' ? this.positieVan(pos) : pos; if (!p) { el.style.display = 'none'; continue; }
-      const q = this.p(p.x, p.y, p.z); el.style.display = ''; el.style.transform = `translate(${q.x}px, ${q.y}px)`;
+      const q = this.p(p.x, p.y, p.z); el.style.display = ''; items.push({ m, x: q.x, y: q.y });
     }
+    plaatsMarkers(items);
   }
   _ellips(r, fill, stroke, lw) {
     const g = this.g; g.beginPath();
@@ -160,22 +165,19 @@ export class Stad2D {
     g.fillStyle = lucht; g.fillRect(0, 0, w, h);
     this._ellips(DAL_R + 8, n > 0.4 ? '#3c5a3a' : '#8fae6a');
     this._ellips(DAL_R, n > 0.4 ? '#3f6b3a' : '#86c95a');
-    this._ellips(PLEIN_R, '#efe6d6');
     const vlak = (pts, kleur) => { g.fillStyle = kleur; g.beginPath(); pts.forEach((q, i) => { const s2 = this.p(q.x, 0, q.z); i ? g.lineTo(s2.x, s2.y) : g.moveTo(s2.x, s2.y); }); g.closePath(); g.fill(); };
-    // de reien, het Minnewater en de haven: hoe helderder de klas het water maakte, hoe blauwer
+    // de vesten, de reien, het Minnewater en de haven: hoe helderder de klas het water maakte, hoe blauwer
     const stand = this.model?.water;
-    const vorm = (w, marge, kleur) => {
-      if (w.soort === 'strook') vlak([{ x: w.x - w.halfB - marge, z: Math.min(w.z0, w.z1) - marge }, { x: w.x + w.halfB + marge, z: Math.min(w.z0, w.z1) - marge },
-        { x: w.x + w.halfB + marge, z: Math.max(w.z0, w.z1) + marge }, { x: w.x - w.halfB - marge, z: Math.max(w.z0, w.z1) + marge }], kleur);
-      else { const pts = []; for (let i = 0; i < 48; i++) { const a = i / 48 * TAU; pts.push({ x: w.x + Math.cos(a) * (w.rx + marge), z: w.z + Math.sin(a) * (w.rz + marge) }); } vlak(pts, kleur); }
-    };
-    for (const w of WATERS) vorm(w, KADE, '#bdb49f');
+    for (const w of WATERS) vlak(waterVeelhoek(w, KADE + 0.25, 1.2), '#cdc6b5');
+    for (const w of WATERS) vlak(waterVeelhoek(w, KADE, 1.2), '#a65a40');
     for (const w of WATERS) {
       const hel = stand?.zones?.[w.zone]?.helder ?? 0;
-      vorm(w, 0, mengHex('#6b6440', '#2f8fd6', hel));
+      vlak(waterVeelhoek(w, 0, 1.2), mengHex('#6d6a34', '#2f8fd6', hel));
     }
-    // spoorbedding
-    vlak([{ x: -DAL_R, z: -SPOOR_HALF + 0.6 }, { x: DAL_R, z: -SPOOR_HALF + 0.6 }, { x: DAL_R, z: SPOOR_HALF - 0.6 }, { x: -DAL_R, z: SPOOR_HALF - 0.6 }], '#a9a196');
+    // de Markt (over de grond, onder de wegen)
+    this._ellips(PLEIN_R, '#efe6d6');
+    // spoorbedding aan de zuidrand van de stad
+    vlak([{ x: -SPOOR_X, z: SPOOR_Z - SPOOR_HALF + 0.6 }, { x: SPOOR_X, z: SPOOR_Z - SPOOR_HALF + 0.6 }, { x: SPOOR_X, z: SPOOR_Z + SPOOR_HALF - 0.6 }, { x: -SPOOR_X, z: SPOOR_Z + SPOOR_HALF - 0.6 }], '#a9a196');
     // wegennet: eerst stoepen, dan asfalt, dan kruispunten (zelfde graaf als de 3D-stad)
     const net = wegennet(this.model?.stadR ?? stadStraal(this.model?.gebouwen || []));
     const lint = (pts, half) => { const l = [], r = []; for (const q of pts) { l.push({ x: q.x - q.dz * half, z: q.z + q.dx * half }); r.push({ x: q.x + q.dz * half, z: q.z - q.dx * half }); } return l.concat(r.reverse()); };
@@ -192,7 +194,7 @@ export class Stad2D {
     }
     // sporen over alles heen (overwegen) en slagbomen
     g.strokeStyle = '#7d838e'; g.lineWidth = Math.max(1, this.cam.zoom * 0.08);
-    for (const zz of SPOOR_SPOREN) for (const dz of [-0.26, 0.26]) { const a = this.p(-DAL_R - 6, 0, zz + dz), b = this.p(DAL_R + 6, 0, zz + dz); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
+    for (const zz of SPOOR_SPOREN) for (const dz of [-0.26, 0.26]) { const a = this.p(-SPOOR_X, 0, SPOOR_Z + zz + dz), b = this.p(SPOOR_X, 0, SPOOR_Z + zz + dz); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
     for (const o of net.overwegen) for (const zk of [-1, 1]) { const q = this.p(o.x - zk * 0.9, 0.5, o.z + zk * (SPOOR_HALF - 0.15)); g.fillStyle = '#e0453a'; g.fillRect(q.x - 2, q.y - 2, 4, 4); }
     // kaartlaag
     const m = this.model;
@@ -206,17 +208,22 @@ export class Stad2D {
     }
     // objecten, gesorteerd op diepte
     const obj = [];
-    obj.push({ x: 0, z: -2.2, d: 0, f: () => this._blok(0, -2.2, 9, 2.4, 2.2, 0, '#d97c55', '#2f8f8a', 'station') });
+    obj.push({ x: TUNNEL_WEST.x, z: TUNNEL_WEST.z, f: () => this._blok(TUNNEL_WEST.x, TUNNEL_WEST.z, 2.4, 5.4, 5, 0, '#b9b2a6', '#8f877b') });
     obj.push({ x: PLEIN.klasmeter.x, z: PLEIN.klasmeter.z, f: () => this._blok(PLEIN.klasmeter.x, PLEIN.klasmeter.z, 0.6, 0.6, 3.6, 0, '#f6eedd', '#f2c94c', 'klasmeter') });
     obj.push({ x: PLEIN.kluis.x, z: PLEIN.kluis.z, f: () => this._blok(PLEIN.kluis.x, PLEIN.kluis.z, 1.6, 1.3, 1.6, 0, '#dfe3ea', '#8d6ad6', 'kluis') });
     obj.push({ x: PLEIN.missiebord.x, z: PLEIN.missiebord.z, f: () => this._blok(PLEIN.missiebord.x, PLEIN.missiebord.z, 2.2, 0.3, 1.9, 0, '#a8743f', '#e9a23b', 'missiebord') });
     obj.push({ x: POORT.x, z: POORT.z, f: () => this._blok(POORT.x, POORT.z, 3, 6, 7, 0, '#c9c2b8', '#e9a23b', 'poort') });
     for (const [id, pl] of Object.entries(PLEKKEN)) {
-      const hoog = id === 'belfort' ? 8.4 : id === 'olvkerk' ? 7.6 : id === 'vuurtoren' ? 6.2 : 3.2;
-      obj.push({ x: pl.x, z: pl.z, f: () => this._blok(pl.x, pl.z, pl.w, pl.d, hoog, -pl.rot, '#efe3cc', '#b4543a', 'plek:' + id) });
+      const hoog = id === 'belfort' ? 8.4 : id === 'olvkerk' ? 7.6 : id === 'vuurtoren' ? 6.2 : id === 'station' ? 2.4 : id === 'waterval' ? 2.4 : 3.2;
+      const kl = id === 'waterval' ? '#9a9183' : id === 'station' ? '#d97c55' : '#efe3cc', dak = id === 'station' ? '#2f8f8a' : id === 'waterval' ? '#8fd8f6' : '#b4543a';
+      obj.push({ x: pl.x, z: pl.z, f: () => this._blok(pl.x, pl.z, pl.w, pl.d, hoog, -pl.rot, kl, dak, id === 'station' ? 'trein' : id === 'waterval' ? null : 'plek:' + id) });
     }
+    // de huizen aan het water en de gildehuizen op de Markt
+    const gevels = ['#b4553c', '#efe6d2', '#c46a48', '#d9b26f', '#9c4a36', '#e7dcc4'];
+    for (const hw of waterhuizen()) obj.push({ x: hw.x, z: hw.z, f: () => this._blok(hw.x, hw.z, hw.w, hw.d, hw.h, -hw.rot, gevels[hw.variant], '#6f4a44') });
+    for (const hm of MARKT_HUIZEN) obj.push({ x: hm.x, z: hm.z, f: () => this._blok(hm.x, hm.z, hm.w, hm.d, hm.h, -hm.rot, gevels[(hm.variant + 1) % 6], '#6f4a44') });
     for (const mo of MOLENS) obj.push({ x: mo.x, z: mo.z, f: () => this._blok(mo.x, mo.z, 1.6, 1.6, 4.2, -mo.rot, '#8a6a44', '#5d4a33') });
-    for (const br of this.bruggen) obj.push({ x: br.x, z: br.z, f: () => this._blok(br.x, br.z, br.breedte, 2.2, 0.5, 0, '#d9cdb6', '#e8ddc6') });
+    for (const br of this.bruggen) if (br.R <= net.stadR + 1e-6) obj.push({ x: br.x, z: br.z, f: () => this._blok(br.x, br.z, WEG_HALF * 2 + 0.5, br.lengte + 1.2, 0.08, -Math.atan2(br.dx, br.dz), '#b5634a', '#cfc6b4') });
     for (const wk of WIJKEN) {
       const p = hqPositie(wk); obj.push({ x: p.x, z: p.z, f: () => this._blok(p.x, p.z, 3, 3.6, 2.6, -p.rot, '#f6eedd', KLEUR[wk.macht], 'gids:' + wk.gids) });
       const gp = gidsPlek(wk); obj.push({ x: gp.x, z: gp.z, f: () => { const q = this.p(gp.x, 0.9, gp.z), r0 = Math.max(3, this.cam.zoom * 0.42); g.fillStyle = KLEUR[wk.macht]; g.beginPath(); g.ellipse(q.x, q.y + r0 * 1.4, r0 * 0.8, r0 * 1.1, 0, 0, TAU); g.fill(); g.fillStyle = '#fbe3cf'; g.beginPath(); g.arc(q.x, q.y, r0, 0, TAU); g.fill(); g.fillStyle = '#2a2230'; g.fillRect(q.x - r0 * 0.4, q.y - r0 * 0.1, 2, 2); g.fillRect(q.x + r0 * 0.3, q.y - r0 * 0.1, 2, 2); } });

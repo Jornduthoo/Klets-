@@ -83,11 +83,14 @@ Alle paden zijn relatief, dus de app werkt ook in een submap. `.nojekyll` zorgt 
 - **De themastad in 3D**: een low-poly stad schuin van bovenaf, zoals in een stadsbouwspel.
   Slepen = schuiven, scrollen of knijpen = zoomen, rechtermuisknop (of Shift + slepen, of de pijlknoppen) = draaien.
   Met het toetsenbord: pijltjes of WASD/ZQSD schuiven, Q en E draaien, + en - zoomen.
-  Levend: auto's, koetsen en fietsers op hun rijstrook, een tram op de ring die af en toe halt houdt, een trein met overwegen,
+  Levend: auto's, koetsen en fietsers op hun rijstrook, een tram op de ring die af en toe halt houdt, een trein die aan de stadsrand tussen twee tunnels door het station rijdt,
   rondvaartboten en zwanen op de reien, de zes gidsen met elk hun eigen manier van wachten (Atlas tuurt rond, Woordje zwaait veel, Byte staat te wiebelen),
   wuivende bomen, wolken, meeuwen en een tilt-shift-look.
-- **Brugge in de stad**: de Markt met het Belfort en trapgevels, de Rozenhoedkaai, het Minnewater met de zwanenbrug,
-  de Reie met kaaien en boogbruggen, de haven met kranen en vuurtoren, de sluis van Zeebrugge, een waterval en in december een kerstmarkt met schaatsbaan.
+- **Brugge in de stad**: een Venetië van het Noorden. Een ringvaart (de vesten) met vier binnenreien, het Minnewater en
+  via de sluis een verbinding met de haven en de zee; bakstenen kaaimuren met kaaitrappen, trapgevelhuizen pal aan het water
+  (de Rozenhoedkaai), kleine stenen boogbruggen waar een weg over het water gaat, rondvaartboten, zwanen en eenden.
+  De Markt is een open plein met het Belfort, een fontein, terrassen en een kring trapgevels. Het station ligt aan de zuidrand.
+  Verder de haven met kranen en vuurtoren, de sluis van Zeebrugge, een waterval en in december een kerstmarkt met schaatsbaan.
 - **Het echte weer van Brugge** (Open-Meteo, 51.21 N 3.22 O, elk kwartier vernieuwd en lokaal bewaard): regen, motregen, sneeuw met sneeuwdek,
   mist, onweer, wind die de bomen, de vlaggen en de windvaan op het Belfort meeneemt, en zon of wolken die het licht kleuren.
   Het weerknopje rechtsboven toont de temperatuur en de windstreek. Zonder internet (of achter een schoolfirewall) komt er één waarschuwing in de console
@@ -165,16 +168,18 @@ Twee weergaven (knop *Toon de stad* / *Toon De Slijkkraak*, of rechtstreeks `dig
   data/thema-waterwereld.js  thema 1: verhaal, weken, doelen, gebouwen, labo's (filmpje, simulatie, test), eindbaas, uitrusting, codes
   data/waterwereld-inhoud.js doelen, weekverhalen, codes en toetsvragen uit de handleiding (gemaakt door het script hieronder)
   tools/afleiden_waterwereld.py  zet de lesbestanden (week1.json ...) om naar data/waterwereld-inhoud.js
+  tools/valideer-stad.mjs    controleert de plattegrond met node (wegen, kavels, water, bruggen, spoor): node tools/valideer-stad.mjs
   js/config.js               domeinen, routes, gidsen, rangen, XP, keuze van de backend
   js/core/util.js            DOM-helper, normalisatie, getallen lezen, spraak, klank
   js/core/store.js           opslaglaag: LocalStore (localStorage) + SupabaseStore (stub)
   js/core/sync.js            live-laag: LocalSync (BroadcastChannel) + SupabaseSync (stub)
   js/core/model.js           themacatalogus, routes, XP/rangen, doelen per reiziger, codes, uitrusting
-  js/city/layout.js          plattegrond: ringen, lanen, spoor, wijken, kavels, plein, de reien, kaaien en bruggen
+  js/city/layout.js          plattegrond: ringen, lanen, spoor, wijken, kavels, plein, het waternet (vesten, reien, Minnewater, haven), huizen aan het water
   js/city/brugge.js          de Brugse plekken: Markt en Belfort, Rozenhoedkaai, Minnewater, haven, sluis, kerstmarkt
   js/city/water.js           van pogingen naar proper water: zones, drempels, waterTekst
   js/city/weer.js            het echte weer van Brugge (Open-Meteo), seizoen, kerstmarkt, terugval en cache
-  js/city/wegen.js           wegennet als graaf (knopen, takken, overwegen) en valideerStad()
+  js/city/wegen.js           wegennet als graaf (knopen, takken, overwegen), de bruggen en valideerStad()
+  js/city/markers.js         labels en markers boven de stad: schuift ze uit elkaar zodat ze niet overlappen
   js/city/stadmodel.js       van pogingen naar een stad: gebouwen, niveaus, bouwplaatsen, mist, huizen, themagebouwen
   js/city/modellen.js        low-poly modellen in code (gebouwen, gidsgebouwen, huizen, station, trein, tram, koets, fiets, Belfort ...)
   js/city/stad3d.js          de 3D-stad: licht, dag/nacht, mist, verkeer, bouwanimaties, kaartlagen, camera, tilt-shift
@@ -320,8 +325,7 @@ Beperkingen:
 - **Opslag per toestel.** Elke laptop heeft zijn eigen gegevens. Tot de Supabase-koppeling er is: *Exporteer alles (JSON)* op elke laptop en *Importeer en voeg samen* op de computer van de leerkracht.
 - **De eindbaas** werkt enkel tussen tabbladen van dezelfde browser (BroadcastChannel). Voor echte laptops in de klas: `SupabaseSync`.
 - `SupabaseStore` en `SupabaseSync` zijn stubs met TODO's: project in de EU-regio, Row Level Security per klas, enkel bijnamen.
-- De tram rijdt rond en houdt halt, maar heeft nog geen haltes op het scherm; het spoor doorkruist de Markt.
-- De havenkom is deels zandgrond in plaats van water aan de buitenste rand.
+- De tram rijdt rond en houdt halt, maar heeft nog geen haltes op het scherm.
 - Spraakopnames zijn nog niet gebouwd; die onderdelen zijn luister- en keuzevragen.
 - De galerij bewaart verkleinde foto's in localStorage (enkele MB per browser).
 - Voorlezen gebruikt de stemmen van het besturingssysteem; zonder Nederlandse stem leest de browser met een andere stem.

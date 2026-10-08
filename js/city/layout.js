@@ -2,19 +2,24 @@
 // Wereldeenheden: 1 eenheid ~ 1 tegel. x = oost, z = zuid, y = omhoog. Middelpunt = de Markt.
 // Gebruikt door de 3D-stad en door de 2D-terugvalkaart, zodat beide precies hetzelfde tonen.
 //
-// Opbouw: een stationsplein met een ringweg errond, daarbuiten ringwegen met tussen elke twee ringen
-// twee rijen kavels (de binnenste rij kijkt naar de binnenste ring, de buitenste naar de buitenste ring).
-// Vier lanen (radiale wegen) verbinden de ringen; het spoor loopt oost-west en kruist de ringen met overwegen.
-// Elke kavel ligt naast een weg, kijkt ernaar en raakt nooit asfalt, stoep of spoor (zie wegen.js: valideerStad).
+// Opbouw: de Markt (een open plein met Belfort, fontein, terrassen en trapgevels) met een ringweg errond,
+// daarbuiten ringwegen met tussen elke twee ringen twee rijen kavels. Vier lanen (radiale wegen) verbinden de ringen.
+// Water: een ringvaart (de vesten) met vier binnenreien naar de Markt, het Minnewater in het zuiden en in het noorden
+// de rei naar de sluis, de haven en de zee. Waar een weg over het water gaat, ligt een stenen boogbrug (wegen.js: bruggen).
+// Het spoor en het station liggen aan de zuidrand, buiten de buitenste ring, tussen twee tunnels in de bergen.
+// Elke kavel ligt naast een weg, kijkt ernaar en raakt nooit asfalt, stoep, spoor of water (zie wegen.js: valideerStad).
 
-/** Ringwegen. De eerste ring omsluit het stationsplein, tussen ring 1 en 2 ligt de Reizigerswijk (huizen). */
-export const RINGEN = [8.6, 15.8, 23.8, 31.8, 39.8, 47.8];
+/** Ringwegen. De eerste ring omsluit de Markt, tussen ring 0 en 1 ligt de Reizigerswijk (huizen).
+ *  Tussen ring 2 en ring 3 ligt de ringvaart (de vesten): die band is breder, met huizen die met hun rug naar het water staan. */
+export const RINGEN = [8.6, 15.8, 23.8, 35.8, 43.8, 51.8];
 export const PLEIN_R = 7.2;
-export const DAL_R = 54;          // rand van de vlakke vallei
-export const BERG_R = 56;         // daar beginnen de bergen
-export const SPOOR_Z = 0;         // het spoor loopt oost-west door het station
+export const DAL_R = 63;          // rand van de vlakke vallei
+export const BERG_R = 65;         // daar beginnen de bergen
+// Het spoor ligt aan de zuidrand van de stad, buiten de buitenste ringweg: het raakt de Markt, de reien en het Minnewater niet.
+export const SPOOR_Z = 56.4;      // het spoor loopt oost-west langs de zuidrand
 export const SPOOR_HALF = 1.9;    // halve breedte van de spoorstrook (ballast en sporen)
-export const SPOOR_SPOREN = [-0.55, 0.55];
+export const SPOOR_SPOREN = [-0.55, 0.55];   // de twee sporen, ten opzichte van SPOOR_Z
+export const SPOOR_X = 32.2;      // het spoor loopt van -SPOOR_X tot SPOOR_X (tussen de twee tunnelmonden in de bergen)
 export const LAAN_HOEKEN = [60, 120, 240, 300].map(d => d * Math.PI / 180); // radiale lanen
 export const RIJBAAN = 1.5;       // asfalt (twee rijstroken)
 export const STOEP = 0.4;         // stoep aan elke kant
@@ -26,10 +31,11 @@ export const KAVEL = 2.5;         // vierkante kavel voor een doelgebouw
 export const HUIS = 2.0;          // kavel voor een huis
 export const HQ = { w: 6.4, d: 4.8 }; // kavel van een gidsgebouw (gebouw + voorpleintje voor de gids)
 export const MIST_MIN = 25;       // straal die altijd vrij is (gidsen, huizen, eerste wijk)
-export const MIST_MAX = 92;        // de nevel hangt ver buiten de stad, voorbij de haven en de zee
-export const POORT = { x: 57.5, z: 0 };     // De Poort: de oostelijke tunnel naar de middelbare school
-export const TUNNEL_WEST = { x: -57.5, z: 0 };
-export const SPOOR_X = 60;        // het spoor loopt van -60 tot 60 (tussen de tunnels)
+export const MIST_MAX = 96;        // de nevel hangt ver buiten de stad, voorbij de haven en de zee
+export const POORT = { x: SPOOR_X + 1.0, z: SPOOR_Z };     // De Poort: de oostelijke tunnel naar de middelbare school
+export const TUNNEL_WEST = { x: -SPOOR_X - 1.0, z: SPOOR_Z };
+/** Het station aan de rand van de stad: het gebouw staat aan de stadskant van het spoor. */
+export const STATION = { x: -17, z: SPOOR_Z };
 
 /** Wijken: elke macht krijgt een taartpunt van 60 graden. Hoek in graden (0 = oost, 90 = zuid). */
 export const WIJKEN = [
@@ -109,8 +115,9 @@ export function straalBereik(poly) {
 }
 /** Raakt de veelhoek de spoorstrook (tussen de tunnels)? */
 export function raaktSpoor(poly, marge = 0) {
-  let zmin = Infinity, zmax = -Infinity;
-  for (const p of poly) { zmin = Math.min(zmin, p.z - SPOOR_Z); zmax = Math.max(zmax, p.z - SPOOR_Z); }
+  let zmin = Infinity, zmax = -Infinity, xmin = Infinity, xmax = -Infinity;
+  for (const p of poly) { zmin = Math.min(zmin, p.z - SPOOR_Z); zmax = Math.max(zmax, p.z - SPOOR_Z); xmin = Math.min(xmin, p.x); xmax = Math.max(xmax, p.x); }
+  if (xmax < -SPOOR_X - 3 || xmin > SPOOR_X + 3) return false;
   const dz = zmin > 0 ? zmin : zmax < 0 ? -zmax : 0;
   return dz < SPOOR_HALF + marge;
 }
@@ -138,28 +145,58 @@ function overlapt(p, q) {
 export { overlapt as veelhoekenOverlappen };
 
 
-// ---------- water: de reien, het Minnewater en de haven ----------
-// Het water ligt in vaste stroken en vlekken. Een strook loopt noord-zuid langs x = 0 (de lanen liggen op
-// 60, 120, 240 en 300 graden en het spoor op z = 0, dus kruist het water alleen de ringwegen: daar liggen
-// bruggen). Elke zone hoort bij een labo: haalt de klas dat labo, dan wordt die zone helder (zie water.js).
+// ---------- water: de vesten, de reien, het Minnewater, de sluis en de haven ----------
+// Zwinvliet is een Venetie van het Noorden: een ringvaart (de vesten) rond het centrum, vier reien die van
+// de vesten naar het centrum lopen (de Dijver met de Rozenhoedkaai, de Groenerei, de Spiegelrei en de Langerei),
+// het Minnewater aan de zuidkant van de vesten, en in het noorden de rei naar de sluis, de haven en de zee.
+// Alles hangt aan elkaar. Waar een weg het water kruist, ligt een stenen boogbrug (zie wegen.js: bruggen()).
+// Elk stuk water hoort bij een zone; haalt de klas het labo van die zone, dan wordt dat water helder (water.js).
 export const KADE = 0.35;         // kademuur rond elk water
+export const WATER_Y = -0.5;      // het wateroppervlak ligt een halve eenheid onder de kade
+export const VEST_R = 29.8, VEST_HALF = 1.6;
+const graden = (d) => d * Math.PI / 180;
 export const WATERS = [
-  { id: 'reie-zuid', naam: 'De Reie aan de Rozenhoedkaai', zone: 'reie-zuid', soort: 'strook', x: 0, halfB: 1.35, z0: PLEIN_R + 0.6, z1: 30.2 },
-  { id: 'rozenhoedkaai', naam: 'Rozenhoedkaai', zone: 'reie-zuid', soort: 'vlek', x: 0, z: 19.4, rx: 3.3, rz: 2.6 },
-  { id: 'minnewater', naam: 'Het Minnewater', zone: 'minnewater', soort: 'vlek', x: 0, z: 36.4, rx: 7.4, rz: 5.4 },
-  { id: 'minne-hals', naam: 'Het Minnewater', zone: 'minnewater', soort: 'strook', x: 0, halfB: 1.35, z0: 30.2, z1: 33.0 },
-  { id: 'reie-noord', naam: 'De Reie bij de Scheepswerf', zone: 'reie-noord', soort: 'strook', x: 0, halfB: 1.35, z0: -27.6, z1: -(PLEIN_R + 0.6) },
-  { id: 'noordrei', naam: 'De rei naar de haven', zone: 'noordrei', soort: 'strook', x: 0, halfB: 1.6, z0: -46.6, z1: -27.6 },
-  { id: 'sluiskolk', naam: 'De sluiskolk van Zeebrugge', zone: 'haven', soort: 'vlek', x: 0, z: -50.2, rx: 2.1, rz: 3.8 },
-  { id: 'haven', naam: 'De havenkom van Zeebrugge', zone: 'haven', soort: 'vlek', x: 0, z: -61.5, rx: 11.5, rz: 6.8 },
-  { id: 'zee', naam: 'De Noordzee', zone: 'haven', soort: 'vlek', x: 0, z: -84, rx: 46, rz: 20 },
+  { id: 'vest-oost', naam: 'De Oostvest', zone: 'reie-zuid', soort: 'boog', r: VEST_R, halfB: VEST_HALF, a0: graden(-45), a1: graden(45) },
+  { id: 'vest-zuid', naam: 'De Zuidvest aan het Minnewater', zone: 'minnewater', soort: 'boog', r: VEST_R, halfB: VEST_HALF, a0: graden(45), a1: graden(135) },
+  { id: 'vest-west', naam: 'De Westvest', zone: 'reie-noord', soort: 'boog', r: VEST_R, halfB: VEST_HALF, a0: graden(135), a1: graden(225) },
+  { id: 'vest-noord', naam: 'De Noordvest', zone: 'noordrei', soort: 'boog', r: VEST_R, halfB: VEST_HALF, a0: graden(225), a1: graden(315) },
+  { id: 'minnewater', naam: 'Het Minnewater', zone: 'minnewater', soort: 'vlek', x: 0, z: 28.6, rx: 7.5, rz: 2.6 },
+  { id: 'rozenhoedkaai', naam: 'De Rozenhoedkaai', zone: 'reie-zuid', soort: 'strook', x0: 0, z0: 10.6, x1: 0, z1: 14.0, halfB: 2.4 },
+  { id: 'dijver', naam: 'De Dijver', zone: 'reie-zuid', soort: 'strook', x0: 0, z0: 13.6, x1: 0, z1: 27.0, halfB: 1.2 },
+  { id: 'groenerei', naam: 'De Groenerei bij de Scheepswerf', zone: 'reie-noord', soort: 'strook', x0: 0, z0: -10.6, x1: 0, z1: -28.6, halfB: 1.2 },
+  { id: 'spiegelrei', naam: 'De Spiegelrei', zone: 'reie-zuid', soort: 'strook', x0: 17.6, z0: 0, x1: 28.6, z1: 0, halfB: 1.2 },
+  { id: 'langerei', naam: 'De Langerei', zone: 'reie-noord', soort: 'strook', x0: -17.6, z0: 0, x1: -28.6, z1: 0, halfB: 1.2 },
+  { id: 'noordrei', naam: 'De rei naar de haven', zone: 'noordrei', soort: 'strook', x0: 0, z0: -31.0, x1: 0, z1: -53.8, halfB: 1.4 },
+  { id: 'sluiskolk', naam: 'De sluiskolk van Zeebrugge', zone: 'haven', soort: 'strook', x0: 0, z0: -53.6, x1: 0, z1: -58.2, halfB: 1.7 },
+  { id: 'haven', naam: 'De havenkom van Zeebrugge', zone: 'haven', soort: 'vlek', x: 0, z: -63, rx: 12, rz: 5.5 },
+  { id: 'zee', naam: 'De Noordzee', zone: 'haven', soort: 'vlek', x: 0, z: -110, rx: 78, rz: 47 },
 ];
-/** Hoort dit punt bij het water? (marge = extra kade errond) */
-export function inWater(x, z, marge = 0) {
-  for (const w of WATERS) {
-    if (w.soort === 'strook') { if (Math.abs(x - w.x) <= w.halfB + marge && z >= Math.min(w.z0, w.z1) - marge && z <= Math.max(w.z0, w.z1) + marge) return w; }
-    else { const dx = (x - w.x) / (w.rx + marge), dz = (z - w.z) / (w.rz + marge); if (dx * dx + dz * dz <= 1) return w; }
+for (const w of WATERS) if (w.soort === 'strook') {
+  const dx = w.x1 - w.x0, dz = w.z1 - w.z0, L = Math.hypot(dx, dz);
+  Object.assign(w, { L, dx: dx / L, dz: dz / L, nx: -dz / L, nz: dx / L });
+}
+/** De sluisdeuren: aan beide kanten van de sluiskolk. */
+export const SLUISDEUREN = [{ x: 0, z: -53.95 }, { x: 0, z: -57.85 }];
+
+/** Ligt (x, z) in dit stuk water (met een extra rand marge)? */
+export function inStuk(w, x, z, marge = 0) {
+  if (w.soort === 'strook') {
+    const px = x - w.x0, pz = z - w.z0, s = px * w.dx + pz * w.dz, d = px * w.nx + pz * w.nz;
+    return Math.abs(d) <= w.halfB + marge && s >= -marge && s <= w.L + marge;
   }
+  if (w.soort === 'boog') {
+    const r = Math.hypot(x, z);
+    if (Math.abs(r - w.r) > w.halfB + marge) return false;
+    let a = Math.atan2(z, x); const ext = marge / Math.max(1, w.r);
+    while (a < w.a0 - ext) a += Math.PI * 2;
+    return a <= w.a1 + ext;
+  }
+  const dx = (x - w.x) / (w.rx + marge), dz = (z - w.z) / (w.rz + marge);
+  return dx * dx + dz * dz <= 1;
+}
+/** Hoort dit punt bij het water? (marge = extra kade errond) Geeft het stuk water terug. */
+export function inWater(x, z, marge = 0) {
+  for (const w of WATERS) if (inStuk(w, x, z, marge)) return w;
   return null;
 }
 /** Welke zone hoort bij dit punt (of null)? */
@@ -167,50 +204,148 @@ export function waterZone(x, z, marge = 0) { return inWater(x, z, marge)?.zone |
 /** Raakt een veelhoek het water (inclusief kade)? */
 export function raaktWater(poly, marge = KADE) {
   for (const p of poly) if (inWater(p.x, p.z, marge)) return true;
-  // ook de randen testen (een smalle strook kan tussen twee hoekpunten door lopen)
+  // ook de randen en het binnenste testen (een smalle rei kan tussen twee hoekpunten door lopen)
   for (let i = 0; i < poly.length; i++) {
-    const a = poly[i], b = poly[(i + 1) % poly.length];
-    for (let t = 0.2; t < 1; t += 0.2) if (inWater(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, marge)) return true;
+    const a = poly[i], b = poly[(i + 1) % poly.length], n = Math.max(2, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.25));
+    for (let k = 1; k < n; k++) { const t = k / n; if (inWater(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, marge)) return true; }
   }
-  return false;
+  let cx = 0, cz = 0; for (const p of poly) { cx += p.x; cz += p.z; }
+  return !!inWater(cx / poly.length, cz / poly.length, marge);
 }
-/** Elke plaats waar een ringweg het water kruist, krijgt een brug. */
-/** Hoe breed is het water op deze z-lijn? (alle wateren liggen op de as x = 0) */
-export function waterHalveBreedte(z) {
-  let b = 0;
-  for (const w of WATERS) {
-    if (w.soort === 'strook') { if (z >= Math.min(w.z0, w.z1) && z <= Math.max(w.z0, w.z1)) b = Math.max(b, w.halfB); }
-    else { const d = (z - w.z) / w.rz; if (Math.abs(d) < 1) b = Math.max(b, w.rx * Math.sqrt(1 - d * d)); }
+/** Het midden van een stuk water (om ernaartoe te vliegen). */
+export function waterMidden(w) {
+  if (w.soort === 'strook') return { x: (w.x0 + w.x1) / 2, z: (w.z0 + w.z1) / 2 };
+  if (w.soort === 'boog') { const a = (w.a0 + w.a1) / 2; return { x: Math.cos(a) * w.r, z: Math.sin(a) * w.r }; }
+  return { x: w.x, z: w.z };
+}
+/**
+ * De omtrek van een stuk water als veelhoek(en), met een extra rand marge. Voor het tekenen (2D-kaart,
+ * het grondmasker en de zonekaart). Een boog geeft één gesloten veelhoek (buitenboog heen, binnenboog terug).
+ */
+export function waterVeelhoek(w, marge = 0, stap = 0.6) {
+  const pts = [];
+  if (w.soort === 'strook') {
+    const h = w.halfB + marge, s0 = -marge, s1 = w.L + marge;
+    for (const [s, d] of [[s0, -h], [s1, -h], [s1, h], [s0, h]]) pts.push({ x: w.x0 + w.dx * s + w.nx * d, z: w.z0 + w.dz * s + w.nz * d });
+  } else if (w.soort === 'boog') {
+    const ext = marge / w.r, a0 = w.a0 - ext, a1 = w.a1 + ext, ro = w.r + w.halfB + marge, ri = w.r - w.halfB - marge;
+    const n = Math.max(8, Math.ceil((a1 - a0) * ro / stap));
+    for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; pts.push({ x: Math.cos(a) * ro, z: Math.sin(a) * ro }); }
+    for (let i = n; i >= 0; i--) { const a = a0 + (a1 - a0) * i / n; pts.push({ x: Math.cos(a) * ri, z: Math.sin(a) * ri }); }
+  } else {
+    const rx = w.rx + marge, rz = w.rz + marge, n = Math.max(24, Math.ceil(Math.PI * (rx + rz) / stap));
+    for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; pts.push({ x: w.x + Math.cos(a) * rx, z: w.z + Math.sin(a) * rz }); }
   }
-  return b;
+  return pts;
 }
-export function bruggen() {
+/**
+ * Punten op de oever van een stuk water, met de richting naar het land (nx, nz) en de richting langs de oever.
+ * Punten die in een ander stuk water liggen (waar twee reien samenkomen) vallen weg: daar loopt het water door.
+ */
+export function oeverPunten(w, stap = 0.7) {
   const uit = [];
-  for (const R of RINGEN) for (const teken of [1, -1]) {
-    const z = teken * R;
-    if (!inWater(0, z, 0.2)) continue;
-    uit.push({ id: `brug-${R}-${teken > 0 ? 'z' : 'n'}`, x: 0, z, breedte: waterHalveBreedte(z) * 2 + 2.2, R });
+  const zet = (x, z, nx, nz) => { if (!inWater(x + nx * 0.06, z + nz * 0.06)) uit.push({ x, z, nx, nz, tx: -nz, tz: nx, w }); };
+  if (w.soort === 'strook') {
+    const n = Math.max(1, Math.round(w.L / stap));
+    for (let i = 0; i <= n; i++) { const s = w.L * i / n; for (const k of [-1, 1]) zet(w.x0 + w.dx * s + w.nx * w.halfB * k, w.z0 + w.dz * s + w.nz * w.halfB * k, w.nx * k, w.nz * k); }
+    const m = Math.max(1, Math.round(w.halfB * 2 / stap));
+    for (let i = 0; i <= m; i++) { const d = -w.halfB + 2 * w.halfB * i / m;
+      zet(w.x0 + w.nx * d, w.z0 + w.nz * d, -w.dx, -w.dz);
+      zet(w.x1 + w.nx * d, w.z1 + w.nz * d, w.dx, w.dz); }
+  } else if (w.soort === 'boog') {
+    for (const [r, k] of [[w.r + w.halfB, 1], [w.r - w.halfB, -1]]) {
+      const n = Math.max(4, Math.round((w.a1 - w.a0) * r / stap));
+      for (let i = 0; i <= n; i++) { const a = w.a0 + (w.a1 - w.a0) * i / n, c = Math.cos(a), s = Math.sin(a); zet(c * r, s * r, c * k, s * k); }
+    }
+  } else {
+    const n = Math.max(24, Math.round(Math.PI * (w.rx + w.rz) / stap));
+    for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, c = Math.cos(a), s = Math.sin(a), nx = c / w.rx, nz = s / w.rz, l = Math.hypot(nx, nz); zet(w.x + c * w.rx, w.z + s * w.rz, nx / l, nz / l); }
   }
   return uit;
 }
 
 // ---------- vaste plekken voor themagebouwen en herkenningspunten ----------
 // Een plek is een rechthoek (x, z, rot, w, d). rot = 0 betekent: de voorkant kijkt naar +z (zuid).
+// labelY: hoe hoog het naamkaartje boven de plek hangt (zodat kaartjes op de Markt niet overlappen).
+const naarMidden = (x, z) => Math.atan2(-x, -z);
+const _wl = polar(33.15, graden(104));
 export const PLEKKEN = {
-  belfort: { x: 0, z: -4.3, rot: 0, w: 4.0, d: 2.6, naam: 'Belfort en Hallen' },
-  hallen: { x: 4.2, z: -3.5, rot: 0, w: 2.8, d: 2.2, naam: 'De Hallen (Werkplaats)' },
-  scheepswerf: { x: 4.6, z: -19.4, rot: Math.PI / 2, w: 4.0, d: 2.8, naam: 'Scheepswerf aan de Reie' },
-  waterlabo: { x: -10.0, z: 34.4, rot: -Math.PI / 2, w: 4.0, d: 3.0, naam: 'Waterlabo bij het Minnewater' },
-  sluis: { x: 4.6, z: -52.4, rot: -Math.PI / 2, w: 3.4, d: 2.6, naam: 'Sluis van Zeebrugge' },
-  vuurtoren: { x: 13.8, z: -62.0, rot: 0, w: 2.4, d: 2.4, naam: 'Vuurtoren op de havendam' },
-  olvkerk: { x: -5.2, z: 19.4, rot: 0, w: 2.6, d: 3.6, naam: 'Onze-Lieve-Vrouwekerk' },
-  provinciaalhof: { x: -4.1, z: -3.9, rot: 0, w: 2.2, d: 2.2, naam: 'Het gotische huis op de Markt' },
+  belfort: { x: 0, z: -4.4, rot: 0, w: 4.0, d: 2.6, naam: 'Belfort en Hallen', labelY: 9.8 },
+  hallen: { x: 4.7, z: -2.7, rot: naarMidden(4.7, -2.7), w: 2.6, d: 2.2, naam: 'De Hallen (Werkplaats)', labelY: 3.9 },
+  provinciaalhof: { x: -4.7, z: -2.7, rot: naarMidden(-4.7, -2.7), w: 2.2, d: 2.2, naam: 'Het gotische huis op de Markt', labelY: 4.2 },
+  scheepswerf: { x: 3.4, z: -19.7, rot: -Math.PI / 2, w: 4.0, d: 2.8, naam: 'Scheepswerf aan de Groenerei', labelY: 3.2 },
+  waterlabo: { x: _wl.x, z: _wl.z, rot: naarMidden(_wl.x, _wl.z), w: 3.4, d: 2.6, schaal: 0.9, naam: 'Waterlabo aan het Minnewater', labelY: 3.4 },
+  waterval: { x: 5.6, z: 32.45, rot: 0, w: 4.4, d: 2.0, naam: 'De waterval van het Minnewater', labelY: 3.4 },
+  sluis: { x: 4.1, z: -55.4, rot: -Math.PI / 2, w: 3.4, d: 2.6, naam: 'Sluis van Zeebrugge', labelY: 3.6 },
+  vuurtoren: { x: 14.5, z: -61.0, rot: 0, w: 2.4, d: 2.4, naam: 'Vuurtoren aan de havenmond', labelY: 5.6 },
+  olvkerk: { x: -5.0, z: 19.8, rot: 0, w: 2.6, d: 3.6, naam: 'Onze-Lieve-Vrouwekerk', labelY: 9 },
+  station: { x: STATION.x, z: SPOOR_Z - 2.72, rot: 0, w: 9.2, d: 1.6, naam: 'Station Zwinvliet', labelY: 4.6, spoor: true },
 };
-/** Molens op de Kruisvest: op de buitenrand van de stad, buiten de ringwegen. */
-export const MOLENS = [-28, -14, 14, 28].map((d, i) => {
-  const a = d * Math.PI / 180 + Math.PI;    // aan de oostkant van de stad (richting De Poort is vrij)
-  return { id: 'molen' + i, x: Math.cos(a) * 51.4, z: Math.sin(a) * 51.4, rot: a + Math.PI / 2 };
+/** Molens op de wallen aan de westrand van de stad, buiten de ringwegen. */
+export const MOLENS = [-26, -12, 12, 26].map((d, i) => {
+  const a = d * Math.PI / 180 + Math.PI;
+  return { id: 'molen' + i, x: Math.cos(a) * 56.6, z: Math.sin(a) * 56.6, rot: a + Math.PI / 2 };
 });
+
+// ---------- huizen aan het water ----------
+// Smalle trapgevelhuizen die met hun gevel recht uit het water rijzen, zoals aan de Rozenhoedkaai in Brugge.
+// Ze staan op vaste plaatsen langs de reien (niet op kavels) en houden kavels, bomen en wegen vrij.
+let _waterhuizen = null;
+export function waterhuizen() {
+  if (_waterhuizen) return _waterhuizen;
+  const lijst = [];
+  const rijen = [
+    ['rozenhoedkaai', 0.15, 3.3, [-1, 1]],
+    ['dijver', 3.65, 8.85, [-1, 1]],
+    ['groenerei', 0.15, 3.85, [-1, 1]],
+    ['groenerei', 6.6, 11.85, [-1, 1]],
+    ['spiegelrei', 0.15, 4.85, [-1, 1]],
+    ['spiegelrei', 7.6, 10.15, [-1, 1]],
+    ['langerei', 0.15, 4.85, [-1, 1]],
+    ['langerei', 7.6, 10.15, [-1, 1]],
+  ];
+  let n = 0;
+  for (const [id, s0, s1, kanten] of rijen) {
+    const w = WATERS.find(x => x.id === id);
+    for (const k of kanten) {
+      let s = s0;
+      while (s < s1 - 0.9) {
+        const breed = Math.min(s1 - s, 0.98 + ((n * 37) % 5) * 0.08);
+        const diep = 1.35, af = w.halfB + 0.03 + diep / 2, mid = s + breed / 2;
+        const x = w.x0 + w.dx * mid + w.nx * af * k, z = w.z0 + w.dz * mid + w.nz * af * k;
+        // de gevel kijkt naar het water
+        const rot = Math.atan2(-w.nx * k, -w.nz * k);
+        const huis = { id: 'waterhuis' + n, x, z, rot, w: breed - 0.04, d: diep, h: 1.7 + ((n * 53) % 7) * 0.17, variant: n % 6, rei: id };
+        huis.poly = hoeken(huis);
+        if (!plekPolys().some(p => overlapt(p, huis.poly)) && !raaktWater(huis.poly, 0) && !raaktWeg(huis.poly, 0.05)) lijst.push(huis);
+        s += breed; n++;
+      }
+    }
+  }
+  _waterhuizen = lijst;
+  return lijst;
+}
+
+// ---------- de Markt ----------
+/** Trapgevels rond de Markt (de gildehuizen), met hun gevel naar het plein. */
+export const MARKT_HUIZEN = (() => {
+  const uit = [];
+  const boog = (a0, a1, r) => {
+    const n = Math.round(Math.abs(a1 - a0) * Math.PI / 180 * r / 1.16);
+    for (let i = 0; i < n; i++) {
+      const a = graden(a0 + (a1 - a0) * (i + 0.5) / n), p = polar(r, a);
+      uit.push({ x: p.x, z: p.z, rot: naarMidden(p.x, p.z), w: 1.08, d: 1.3, h: 2.0 + ((uit.length * 41) % 6) * 0.22, variant: uit.length % 6 });
+    }
+  };
+  boog(-12, 44, 6.25); boog(136, 192, 6.25);
+  return uit;
+})();
+/** Terrasjes voor de gildehuizen (tafel met parasol). */
+export const TERRASSEN = (() => {
+  const uit = [];
+  for (const [a0, a1] of [[-8, 40], [140, 188]]) for (let a = a0; a <= a1; a += 12) for (const r of [4.55]) { const p = polar(r, graden(a)); uit.push({ x: p.x, z: p.z, rot: graden(a) }); }
+  return uit;
+})();
 
 // ---------- hoofdkwartieren ----------
 /** Het gidsgebouw staat midden in de eerste band van zijn wijk en kijkt naar de binnenste ring. */
@@ -233,6 +368,7 @@ export function kavels() {
   if (_kavels) return _kavels;
   _kavels = {};
   const hqs = WIJKEN.map(w => hoeken(hqPositie(w)));
+  const genomen = [];     // kavels op de grens van twee wijken: de eerste wijk krijgt ze
   for (const w of WIJKEN) {
     const mid = rad(w.hoek), lijst = [];
     for (let b = 1; b < RINGEN.length - 1; b++) {
@@ -248,6 +384,9 @@ export function kavels() {
           if (raaktWeg(poly, 0.02) || raaktSpoor(poly, 0.3) || raaktWater(poly)) continue;
           if (hqs.some(h => overlapt(h, poly))) continue;
           if (plekPolys().some(h => overlapt(h, poly))) continue;
+          if (waterhuizen().some(h => overlapt(h.poly, poly))) continue;
+          if (genomen.some(q => Math.abs(q.r - rho) < 0.1 && overlapt(q.poly, poly))) continue;
+          genomen.push({ r: rho, poly });
           lijst.push({ ...rect, r: rho, a, binnen, band: b, boog: Math.abs(boog) });
         }
       }
@@ -272,6 +411,7 @@ export function huisKavels() {
       const poly = hoeken(rect);
       if (raaktWeg(poly, 0.02) || raaktSpoor(poly, 0.3) || raaktWater(poly)) continue;
       if (plekPolys().some(h => overlapt(h, poly))) continue;
+      if (waterhuizen().some(h => overlapt(h.poly, poly))) continue;
       lijst.push({ ...rect, r: rho, a, binnen, voorkant: Math.abs(hoekVerschil(a, Math.PI / 2)) });
     }
   }
@@ -294,21 +434,30 @@ export function plekPolys() {
   return _plekPolys;
 }
 
-/** Vaste gebouwen op en rond de Markt. */
+/** Vaste gebouwen op en rond de Markt: de fontein in het midden, de codekluis en het missiebord aan de open zuidkant. */
 export const PLEIN = {
   station: PLEKKEN.belfort,
-  klasmeter: { x: 0, z: 4.3 },      // de grote fontein op de Markt
-  kluis: { x: -4.1, z: 3.9, rot: Math.PI * 0.18 },
-  missiebord: { x: 4.1, z: 3.9, rot: -Math.PI * 0.18 },
+  klasmeter: { x: 0, z: 0.7 },      // de grote fontein op de Markt
+  kluis: { x: -2.5, z: 4.75, rot: Math.PI * 0.16 },
+  missiebord: { x: 2.5, z: 4.75, rot: -Math.PI * 0.16 },
+};
+/** Waar de vaste naamkaartjes in de stad hangen (de app zet er knoppen op). */
+export const LABELS = {
+  station: { x: 0, y: 12.6, z: -4.5 },          // de naam van de stad, boven de toren van het Belfort
+  poort: { x: POORT.x, y: 8.5, z: POORT.z },
+  kluis: { x: PLEIN.kluis.x, y: 2.6, z: PLEIN.kluis.z },
+  missiebord: { x: PLEIN.missiebord.x, y: 2.8, z: PLEIN.missiebord.z },
 };
 
-/** Ruimte voor bomen: niet op wegen, plein of spoor. */
+/** Ruimte voor bomen: niet op wegen, plein, spoor, water of tegen een gebouw. */
 export function isVrijVoorBoom(x, z, marge = 0.35) {
   const r = Math.hypot(x, z);
   if (r < PLEIN_R + 0.6) return false;
   if (inWater(x, z, KADE + marge + 0.3)) return false;
-  for (const p of Object.values(PLEKKEN)) if (Math.abs(x - p.x) < p.w / 2 + 1 && Math.abs(z - p.z) < p.d / 2 + 1) return false;
-  if (Math.abs(z - SPOOR_Z) < SPOOR_HALF + 0.6 && r < BERG_R + 4) return false;
+  for (const p of Object.values(PLEKKEN)) if (Math.abs(x - p.x) < Math.max(p.w, p.d) / 2 + 1 && Math.abs(z - p.z) < Math.max(p.w, p.d) / 2 + 1) return false;
+  for (const h of waterhuizen()) if (Math.abs(x - h.x) < 1.3 && Math.abs(z - h.z) < 1.3) return false;
+  if (Math.abs(z - SPOOR_Z) < SPOOR_HALF + 0.8 && Math.abs(x) < SPOOR_X + 6) return false;
+  if (Math.abs(x - STATION.x) < 8 && z > SPOOR_Z - 5 && z < SPOOR_Z + 3) return false;
   for (const R of RINGEN) if (Math.abs(r - R) < WEG_HALF + marge) return false;
   const a = Math.atan2(z, x);
   if (r < RINGEN[RINGEN.length - 1] + 1) for (const l of LAAN_HOEKEN) if (Math.abs(hoekVerschil(a, l)) < Math.PI / 2 && Math.abs(Math.sin(hoekVerschil(a, l))) * r < WEG_HALF + marge) return false;

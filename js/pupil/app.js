@@ -11,6 +11,7 @@ import { themaCatalog, kiesSet, routeVoor, isOpen, rangVoor, doelStats, doelStat
 import { AVATAR_OPTIES, DEFAULT_LOOK, HAAR_NAAM, STOFHAAR, STOF_KLEUREN, CREATOR_TABS, KEUZE_NAAM, willekeurigeLook } from '../figuren/uiterlijk.js';
 import { avatarBeeld, maakVoorbeeld, warmOp } from '../figuren/portret.js';
 import { maakStad, bewaarKwaliteit } from '../city/stad.js';
+import { LABELS } from '../city/layout.js';
 import { stadModel, goalMissieIndex, HUISDECOR, NIVEAU_NAAM } from '../city/stadmodel.js';
 import { WIJK } from '../city/layout.js';
 import { volgWeer, weerTekst, windstreek, huidigWeer } from '../city/weer.js';
@@ -218,10 +219,10 @@ async function enterWorld() {
       h('span', { class: 'marker-rond' }, gidsPortret(id, 2)), h('span', { class: 'marker-naam' }, g.plek), h('span', { class: 'marker-badge', hidden: true, 'data-gids': id }));
     S.stad.zetMarker('hq:' + id, el, 'gids:' + id);
   }
-  S.stad.zetMarker('station', h('button', { type: 'button', class: 'marker label', id: 'marker-stad', onclick: () => kiesInStad('station') }, stadNaam()), { x: 0, y: 7.4, z: -2.2 });
-  S.stad.zetMarker('poort', h('button', { type: 'button', class: 'marker label poort', onclick: () => kiesInStad('poort') }, 'De Poort'), { x: 57.5, y: 10.5, z: 0 });
-  S.stad.zetMarker('kluis', h('button', { type: 'button', class: 'marker label klein', onclick: () => kiesInStad('kluis') }, 'Codekluis'), { x: -4.1, y: 2.6, z: 3.9 });
-  S.stad.zetMarker('missiebord', h('button', { type: 'button', class: 'marker label klein', onclick: () => kiesInStad('missiebord') }, 'Missiebord'), { x: 4.1, y: 2.6, z: 3.9 });
+  S.stad.zetMarker('station', h('button', { type: 'button', class: 'marker label', id: 'marker-stad', onclick: () => kiesInStad('station') }, stadNaam()), LABELS.station);
+  S.stad.zetMarker('poort', h('button', { type: 'button', class: 'marker label poort', onclick: () => kiesInStad('poort') }, 'De Poort'), LABELS.poort);
+  S.stad.zetMarker('kluis', h('button', { type: 'button', class: 'marker label klein', onclick: () => kiesInStad('kluis') }, 'Codekluis'), LABELS.kluis);
+  S.stad.zetMarker('missiebord', h('button', { type: 'button', class: 'marker label klein', onclick: () => kiesInStad('missiebord') }, 'Missiebord'), LABELS.missiebord);
   await bouwStad({ eerste: true });
   startWeer();
   view.querySelector('canvas')?.focus();

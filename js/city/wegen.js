@@ -4,11 +4,12 @@
 // - Ringen liggen er enkel tot de straal waarop de stad gegroeid is (stadR); lanen lopen van ring 0 tot die ring.
 //   Zo groeit elke nieuwe weg altijd vanuit een bestaande weg en eindigt hij op een kruispunt (geen doodlopende stukken).
 // - Een laan die een ring kruist, maakt een X-kruispunt; op ring 0 en op de buitenste ring is het een T-kruispunt.
-// - Waar een ring het spoor kruist, ligt een overweg met slagbomen.
+// - Waar een weg het spoor kruist, ligt een overweg met slagbomen (het spoor ligt nu aan de rand: er zijn er geen).
+// - Waar een weg het water kruist, ligt een stenen boogbrug (bruggen()).
 import {
   RINGEN, LAAN_HOEKEN, WEG_HALF, RIJBAAN, RIJSTROOK, SPOOR_Z, SPOOR_HALF, SPOOR_X, polar, hoeken, straalBereik,
   afstandSegmentPoly, raaktSpoor, kavels, huisKavels, hqPositie, WIJKEN, KAVEL, HUIS, veelhoekenOverlappen, PLEIN_R,
-  WATERS, inWater, raaktWater, bruggen, PLEKKEN, KADE,
+  WATERS, inWater, raaktWater, PLEKKEN, KADE, waterhuizen, MARKT_HUIZEN, MOLENS, STATION, BERG_R,
 } from './layout.js';
 
 const TAU = Math.PI * 2;
@@ -39,8 +40,8 @@ export function wegennet(stadR = RINGEN[RINGEN.length - 1]) {
     let a1 = hoekenL[lj]; if (a1 <= a) a1 += TAU;
     const t = { id: takken.length, soort: 'ring', a: kid(ri, li), b: kid(ri, lj), R, a0: a, a1, lengte: R * (a1 - a) };
     takken.push(t);
-    // overweg: waar de ring z = 0 kruist (hoek 0 of PI)
-    for (const ak of [0, Math.PI, TAU]) if (ak > a && ak < a1) overwegen.push({ x: Math.cos(ak) * R, z: SPOOR_Z, R, tak: t.id, s: R * (ak - a) });
+    // overweg: waar de ring het spoor (z = SPOOR_Z, tussen de tunnels) kruist
+    for (const ak of spoorHoeken(R)) for (const k of [ak, ak + TAU]) if (k > a && k < a1) overwegen.push({ x: Math.cos(k) * R, z: SPOOR_Z, R, tak: t.id, s: R * (k - a) });
   }));
   // laanvakken tussen twee ringen
   hoekenL.forEach((a, li) => { for (let ri = 0; ri < ringen.length - 1; ri++) {
@@ -50,6 +51,13 @@ export function wegennet(stadR = RINGEN[RINGEN.length - 1]) {
   const net = { stadR, ringen, knopen, takken, overwegen };
   cache.set(key, net);
   return net;
+}
+
+/** Hoeken waarop een ring met straal R het spoor kruist (leeg als de ring binnen het spoor blijft). */
+export function spoorHoeken(R) {
+  if (R < Math.abs(SPOOR_Z)) return [];
+  const a = Math.asin(SPOOR_Z / R);
+  return [a, Math.PI - a].map(x => (x + TAU) % TAU).filter(x => Math.abs(Math.cos(x) * R) <= SPOOR_X);
 }
 
 /** Punt en richting op een tak, op afstand s vanaf knoop a (u = s / lengte). */
@@ -101,9 +109,12 @@ export function valideerStad(opts = {}) {
     }
     for (const t of n.takken) for (const e of [t.a, t.b]) if (!n.knopen[e]) fouten.push(`tak ${t.id} eindigt nergens`);
     // elke kruising van een weg met het spoor is een overweg
-    const ringSpoor = n.takken.filter(t => t.soort === 'ring').reduce((s, t) => s + [0, Math.PI, TAU].filter(a => a > t.a0 && a < t.a1).length, 0);
+    const ringSpoor = n.takken.filter(t => t.soort === 'ring').reduce((som, t) => som + spoorHoeken(t.R).flatMap(x => [x, x + TAU]).filter(x => x > t.a0 && x < t.a1).length, 0);
     if (ringSpoor !== n.overwegen.length) fouten.push('niet elke kruising met het spoor heeft een overweg');
-    for (const t of n.takken) if (t.soort === 'laan' && Math.abs(Math.sin(t.hoek)) * t.r0 < SPOOR_HALF + WEG_HALF) fouten.push(`laan ${t.id} ligt op het spoor`);
+    for (const t of n.takken) if (t.soort === 'laan') {
+      const a = polar(t.r0, t.hoek), b = polar(t.r1, t.hoek);
+      if (afstandSegmentPoly(a, b, spoorPoly()) < WEG_HALF) fouten.push(`laan ${t.id} kruist het spoor zonder overweg`);
+    }
   }
   // 2. wegvakken als veelhoeken (middellijn +- halve breedte), uit de polylijnen van de graaf
   const wegStukken = [];
@@ -142,27 +153,89 @@ export function valideerStad(opts = {}) {
     if (Math.abs(Math.hypot(a.s.x, a.s.z) - Math.hypot(b.s.x, b.s.z)) > 6) continue;
     if (veelhoekenOverlappen(a.poly, b.poly)) fouten.push(`${a.naam} overlapt ${b.naam}`);
   }
-  // 4. water: elke plaats waar een weg het water kruist heeft een brug, en geen kavel ligt in het water
+  // 4. water: elke plaats waar een weg (ook de stoep) het water kruist, ligt op een brug; geen kavel ligt in het water
   const brug = bruggen();
   for (const t of net.takken) {
-    const pts = takLijn(t, 0.4);
-    for (let i = 1; i < pts.length; i++) {
-      const m = { x: (pts[i - 1].x + pts[i].x) / 2, z: (pts[i - 1].z + pts[i].z) / 2 };
-      if (!inWater(m.x, m.z)) continue;
-      if (!brug.some(b => Math.hypot(b.x - m.x, b.z - m.z) < b.breedte / 2 + 0.6)) fouten.push(`weg ${t.id} kruist het water zonder brug bij (${m.x.toFixed(1)}, ${m.z.toFixed(1)})`);
+    const L = t.lengte, n = Math.ceil(L / 0.25);
+    for (let i = 0; i <= n; i++) {
+      const s = L * i / n, p = takPunt(t, s);
+      for (const d of [0, -WEG_HALF, WEG_HALF]) {
+        const x = p.x - p.dz * d, z = p.z + p.dx * d;
+        if (!inWater(x, z)) continue;
+        if (!brug.some(b => b.tak === t.id && s >= b.s0 - WEG_HALF - 0.6 && s <= b.s1 + WEG_HALF + 0.6)) { fouten.push(`weg ${t.id} kruist het water zonder brug bij (${x.toFixed(1)}, ${z.toFixed(1)})`); break; }
+      }
     }
   }
+  for (const b of brug) if (b.s0 < KRUIS + 0.3 || b.s1 > net.takken[b.tak].lengte - KRUIS - 0.3) fouten.push(`brug ${b.id} ligt op een kruispunt`);
   for (const k of alle) if (raaktWater(k.poly, KADE)) fouten.push(`${k.naam} ligt in het water`);
-  // 5. themagebouwen: op het droge (de Scheepswerf, het Waterlabo en de Sluis staan op de kade) en niet op een weg
-  for (const [id, p] of Object.entries(PLEKKEN)) {
-    const poly = hoeken(p);
-    if (raaktWater(poly, 0)) fouten.push(`plek ${id} staat in het water`);
-    if (raaktWegNet(poly)) fouten.push(`plek ${id} staat op een weg`);
-    if (raaktSpoor(poly, 0.05) && Math.abs(p.z) > 2) fouten.push(`plek ${id} staat op het spoor`);
+  // 5. themagebouwen, huizen aan het water en de gevels op de Markt: op het droge (de kade mag) en niet op een weg
+  const vast = [
+    ...Object.entries(PLEKKEN).map(([id, p]) => ({ naam: 'plek ' + id, poly: hoeken(p), spoor: p.spoor })),
+    ...waterhuizen().map(h => ({ naam: h.id + ' aan de ' + h.rei, poly: h.poly })),
+    ...MARKT_HUIZEN.map((h, i) => ({ naam: 'gevel ' + i + ' op de Markt', poly: hoeken(h), markt: true })),
+    ...MOLENS.map(m => ({ naam: m.id, poly: hoeken({ x: m.x, z: m.z, rot: m.rot, w: 2.2, d: 2.2 }) })),
+  ];
+  for (const v of vast) {
+    if (raaktWater(v.poly, 0)) fouten.push(`${v.naam} staat in het water`);
+    if (raaktWegNet(v.poly)) fouten.push(`${v.naam} staat op een weg`);
+    if (!v.spoor && raaktSpoor(v.poly, 0.05)) fouten.push(`${v.naam} staat op het spoor`);
+    if (v.markt) { const [, rmax] = straalBereik(v.poly); if (rmax > PLEIN_R) fouten.push(`${v.naam} steekt buiten de Markt`); }
   }
+  for (let i = 0; i < vast.length; i++) for (let j = i + 1; j < vast.length; j++) if (veelhoekenOverlappen(vast[i].poly, vast[j].poly)) fouten.push(`${vast[i].naam} overlapt ${vast[j].naam}`);
+  for (const v of vast) for (const k of alle) if (veelhoekenOverlappen(v.poly, k.poly)) fouten.push(`${v.naam} overlapt ${k.naam}`);
   for (const w of WATERS) if (!w.zone) fouten.push(`water ${w.id} hoort bij geen zone`);
+  // 6. het spoor: aan de rand van de stad, nooit over de Markt, het Minnewater of een rei (behalve over een spoorbrug)
+  const spoor = spoorPoly();
+  const [smin] = straalBereik(spoor);
+  if (smin < PLEIN_R + 1) fouten.push('het spoor kruist de Markt');
+  if (smin < RINGEN[RINGEN.length - 1] + WEG_HALF) fouten.push('het spoor ligt niet aan de rand van de stad');
+  for (let x = -SPOOR_X; x <= SPOOR_X; x += 0.25) for (const dz of [-SPOOR_HALF, 0, SPOOR_HALF]) {
+    const w = inWater(x, SPOOR_Z + dz, 0.1);
+    if (!w || SPOORBRUGGEN.some(b => x >= b.x0 && x <= b.x1)) continue;
+    fouten.push(w.zone === 'minnewater' ? 'het spoor kruist het Minnewater' : `het spoor kruist ${w.naam} zonder spoorbrug`); x = Infinity; break;
+  }
+  if (Math.hypot(SPOOR_X, SPOOR_Z) < BERG_R - 1.5) fouten.push('de tunnels van het spoor liggen niet in de bergen');
+  const st = hoeken(PLEKKEN.station);
+  if (raaktSpoor(st, 0)) fouten.push('het stationsgebouw staat op de sporen');
+  if (!raaktSpoor(st, 1.2)) fouten.push('het stationsgebouw staat niet aan het spoor');
+  if (Math.abs(STATION.x) > SPOOR_X - 6) fouten.push('het station ligt te dicht bij een tunnel');
 
-  return { ok: fouten.length === 0, fouten, aantal: { kavels: alle.length, takken: net.takken.length, overwegen: net.overwegen.length, bruggen: brug.length, waters: WATERS.length } };
+  return { ok: fouten.length === 0, fouten, aantal: { kavels: alle.length, takken: net.takken.length, overwegen: net.overwegen.length, bruggen: brug.length, waters: WATERS.length, waterhuizen: waterhuizen().length, huiskavels: huisKavels().length } };
+}
+
+/** Spoorbruggen (x-bereik) waar het spoor over water mag. Het spoor ligt aan de rand en kruist geen water. */
+export const SPOORBRUGGEN = [];
+/** De spoorstrook als veelhoek (tussen de twee tunnels). */
+export function spoorPoly() {
+  return [{ x: -SPOOR_X, z: SPOOR_Z - SPOOR_HALF }, { x: SPOOR_X, z: SPOOR_Z - SPOOR_HALF }, { x: SPOOR_X, z: SPOOR_Z + SPOOR_HALF }, { x: -SPOOR_X, z: SPOOR_Z + SPOOR_HALF }];
+}
+
+let _bruggen = null;
+/**
+ * Alle bruggen: waar een wegvak van het volgroeide net over het water loopt. Elke brug weet op welke tak ze ligt
+ * (s0..s1 langs die tak), haar richting (dx, dz), hoe lang de overspanning is en vanaf welke ring ze er ligt (R).
+ */
+export function bruggen() {
+  if (_bruggen) return _bruggen;
+  const net = wegennet(RINGEN[RINGEN.length - 1]);
+  const uit = [];
+  for (const t of net.takken) {
+    const L = t.lengte, n = Math.ceil(L / 0.05);
+    let s0 = null, w0 = null;
+    for (let i = 0; i <= n + 1; i++) {
+      const s = Math.min(L, L * i / n), p = takPunt(t, s);
+      const w = i <= n ? inWater(p.x, p.z) : null;
+      if (w && s0 == null) { s0 = s; w0 = w; }
+      if (!w && s0 != null) {
+        const s1 = s, m = takPunt(t, (s0 + s1) / 2);
+        uit.push({ id: `brug-${t.id}-${uit.length}`, tak: t.id, s0, s1, x: m.x, z: m.z, dx: m.dx, dz: m.dz, lengte: s1 - s0,
+          R: t.soort === 'ring' ? t.R : t.r1, water: w0.id, zone: w0.zone });
+        s0 = null;
+      }
+    }
+  }
+  _bruggen = uit;
+  return uit;
 }
 
 /** Lengte van het spoor tussen de tunnels (voor het tekenen). */

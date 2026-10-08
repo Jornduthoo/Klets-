@@ -112,17 +112,19 @@ export class Weer3D {
     const { kraamGeo, kerstboomGeo } = await import('./brugge.js');
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
     const r = rng('kerst');
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * TAU + 0.3;
+    // de kraampjes staan in een boog voor de gildehuizen (de terrasjes maken plaats)
+    const hoeken = [-8, 8, 24, 40, 140, 156, 172, 188];
+    hoeken.forEach((d, i) => {
+      const a = d * Math.PI / 180;
       const m = new THREE.Mesh(kraamGeo(i), mat);
-      m.position.set(Math.cos(a) * 5.6, 0, 4.3 + Math.sin(a) * 5.6);
-      m.rotation.y = -a + Math.PI / 2;
+      m.position.set(Math.cos(a) * 4.6, 0, Math.sin(a) * 4.6);
+      m.rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a));
       m.castShadow = true;
       this.kerst.add(m);
       void r;
-    }
+    });
     const boom = new THREE.Mesh(kerstboomGeo(), mat);
-    boom.position.set(-2.6, 0, -1.2); boom.castShadow = true;
+    boom.position.set(0, 0, 4.6); boom.castShadow = true;
     this.kerst.add(boom);
   }
 
@@ -132,9 +134,23 @@ export class Weer3D {
     this.doel = sterktes(w);
     this.seizoen = w?.seizoen || 'lente';
     this.kerstmarkt = !!w?.kerstmarkt;
-    if (this.kerstmarkt) this._vulKerstmarkt().then(() => { this.kerst.visible = true; });
-    else this.kerst.visible = false;
+    if (this.kerstmarkt) this._vulKerstmarkt().then(() => { this.kerst.visible = true; for (const t of this.stad.terrassen || []) t.visible = false; });
+    else { this.kerst.visible = false; for (const t of this.stad.terrassen || []) t.visible = true; }
     this.stad.zetSeizoen?.(this.seizoen, w);
+    // Het eerste weer na het openen geldt meteen: geen tien seconden wachten op het sneeuwdek, de regen of de mist.
+    if (!this._eersteWeer) {
+      this._eersteWeer = true;
+      this.s = { ...this.s, ...this.doel };
+      this.sneeuwdek = this._wilSneeuwdek();
+      this.uSneeuw.value = this.sneeuwdek;
+      this.uDroog.value = 1 - clamp(this.s.regen * 0.9, 0, 0.8);
+    }
+  }
+  /** Hoeveel sneeuwdek hoort er bij het huidige weer? (1 = alles wit) */
+  _wilSneeuwdek() {
+    const w = this.weer || {};
+    const koud = (w.temp ?? 10) < 2.5;
+    return this.s.sneeuw > 0.1 && koud ? 1 : (koud && this.seizoen === 'winter' ? this.sneeuwdek : 0);
   }
 
   tick(dt, t, cam) {
@@ -150,9 +166,8 @@ export class Weer3D {
       if (cam) u.uMidden.value.set(Math.round(cam.position.x), -4, Math.round(cam.position.z));
       p.visible = sterkte > 0.02;
     }
-    // sneeuwdek groeit zolang het sneeuwt en het koud is, en smelt daarna
-    const koud = (w.temp ?? 10) < 2.5;
-    const wil = this.s.sneeuw > 0.1 && koud ? 1 : (koud && this.seizoen === 'winter' ? this.sneeuwdek : 0);
+    // sneeuwdek groeit zolang het sneeuwt en het koud is, en smelt daarna (bij het openen staat het er meteen, zie setWeer)
+    const wil = this._wilSneeuwdek();
     this.sneeuwdek = lerp(this.sneeuwdek, wil, 1 - Math.exp(-dt * 0.12));
     this.uSneeuw.value = this.sneeuwdek;
     this.uDroog.value = 1 - clamp(this.s.regen * 0.9, 0, 0.8);
