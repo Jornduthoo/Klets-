@@ -28,7 +28,9 @@ export function stemSleutel(tekst) {
 /** Een tekst in zinnen knippen; erg lange zinnen nog eens bij een komma of puntkomma. */
 export function zinnen(tekst, max = 180) {
   const t = normaliseer(tekst); if (!t) return [];
-  const delen = t.match(/[^.!?…]+(?:[.!?…]+["'”’)]*|$)/g) || [t];
+  // een punt tussen cijfers (22.6) is geen einde van een zin
+  const veilig = t.replace(/(\d)\.(?=\d)/g, '$1\u2024');
+  const delen = (veilig.match(/[^.!?…]+(?:[.!?…]+["'”’)]*|$)/g) || [veilig]).map(x => x.replace(/\u2024/g, '.'));
   const uit = [];
   for (let d of delen.map(x => x.trim()).filter(Boolean)) {
     while (d.length > max) {
@@ -100,14 +102,30 @@ function laadManifest() {
     const clips = new Map();
     const c = j?.clips ?? j;
     if (Array.isArray(c)) for (const k of c) clips.set(String(k), `${k}.mp3`);
-    else if (c && typeof c === 'object') for (const [k, v] of Object.entries(c)) if (/^[0-9a-f]{8}$/.test(k)) clips.set(k, typeof v === 'string' ? v : `${k}.mp3`);
-    manifest = { clips, stem: j?.stem || '' };
+    else if (c && typeof c === 'object') for (const [k, v] of Object.entries(c)) if (/^[0-9a-f]{8}$/.test(k)) clips.set(k, typeof v === 'string' || Array.isArray(v) ? v : `${k}.mp3`);
+    manifest = { clips, stem: j?.stem || '', paks: Array.isArray(j?.paks) ? j.paks : [] };
     return manifest;
   });
   return manifestBezig;
 }
 if (typeof window !== 'undefined') laadManifest();
-function clipVoor(tekst) { const f = manifest?.clips.get(stemSleutel(tekst)); return f ? `audio/stem/${f}` : null; }
+// Een clip is een los bestand ("<sleutel>.mp3") of een stuk uit een pakket: [pakket, begin, lengte].
+// Pakketten (audio/stem/pak-NN.bin) worden pas geladen als er een clip uit nodig is, en maar één keer.
+const pakken = new Map(), clipUrls = new Map();
+function clipVoor(tekst) {
+  const k = stemSleutel(tekst), f = manifest?.clips.get(k);
+  if (!f) return null;
+  if (typeof f === 'string') return `audio/stem/${f}`;
+  return () => {
+    if (clipUrls.has(k)) return clipUrls.get(k);
+    const [p, begin, lengte] = f, naam = manifest.paks[p];
+    if (!naam) return Promise.resolve(null);
+    if (!pakken.has(naam)) pakken.set(naam, fetch(`audio/stem/${naam}`).then(r => (r.ok ? r.arrayBuffer() : null)).catch(() => null));
+    const url = pakken.get(naam).then(buf => (buf ? URL.createObjectURL(new Blob([buf.slice(begin, begin + lengte)], { type: 'audio/mpeg' })) : null));
+    clipUrls.set(k, url);
+    return url;
+  };
+}
 
 export function stemInfo() {
   const v = gekozen;
@@ -164,7 +182,9 @@ function stopIntern() {
 }
 
 const wacht = (ms) => new Promise(r => setTimeout(r, ms));
-function speelClip(url, gen) {
+async function speelClip(bron, gen) {
+  const url = typeof bron === 'function' ? await bron() : bron;
+  if (!url || gen !== generatie) return false;
   return new Promise((klaar) => {
     try {
       speler = speler || new Audio();
@@ -256,7 +276,8 @@ export function tekstVan(el) {
       if (n.matches('button.optie, button.keuze, button[data-lees]')) { const t = normaliseer(n.textContent); if (t) uit.push(t); }
       return;
     }
-    const heeftBlokKind = [...n.children].some(c => /^(P|LI|H1|H2|H3|H4|UL|OL|DIV|SECTION|TABLE|LABEL|FIGURE|BUTTON|HEADER|FOOTER)$/.test(c.tagName));
+    // ook <b>, <small>, <strong> en <span> apart lezen, anders plakken woorden aan elkaar ("ZwinvlietMaandag")
+    const heeftBlokKind = [...n.children].some(c => /^(P|LI|H1|H2|H3|H4|UL|OL|DIV|SECTION|TABLE|LABEL|FIGURE|BUTTON|HEADER|FOOTER|B|SMALL|STRONG|SPAN|BR)$/.test(c.tagName));
     if (BLOK.test(n.tagName) && !heeftBlokKind) { const t = normaliseer(n.textContent); if (t) uit.push(t); return; }
     for (const c of n.childNodes) {
       if (c.nodeType === 3) { const t = normaliseer(c.textContent); if (t && heeftBlokKind) uit.push(t); }
