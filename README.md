@@ -83,9 +83,11 @@ Alle paden zijn relatief, dus de app werkt ook in een submap. `.nojekyll` zorgt 
 - **De themastad in 3D**: een low-poly stad schuin van bovenaf, zoals in een stadsbouwspel.
   Slepen = schuiven, scrollen of knijpen = zoomen, rechtermuisknop (of Shift + slepen, of de pijlknoppen) = draaien.
   Met het toetsenbord: pijltjes of WASD/ZQSD schuiven, Q en E draaien, + en - zoomen.
-  Levend: auto's, koetsen en fietsers op hun rijstrook, een tram op de ring die af en toe halt houdt, een trein die aan de stadsrand tussen twee tunnels door het station rijdt,
-  rondvaartboten en zwanen op de reien, de zes gidsen met elk hun eigen manier van wachten (Atlas tuurt rond, Woordje zwaait veel, Byte staat te wiebelen),
+  Levend: paardenkarren, koetsen, ruiters, handkarren en wandelaars op de kasseien, een stoomtrein die aan de stadsrand tussen twee tunnels door het oude station rijdt,
+  rondvaartboten, koggen, slijkschuiten en zwanen op de reien, de zes gidsen met elk hun eigen manier van wachten (Atlas tuurt rond, Woordje zwaait veel, Byte staat te wiebelen),
   wuivende bomen, wolken, meeuwen en een tilt-shift-look.
+- **Middeleeuws Brugge**: kasseiwegen met lantaarns en fakkels, een stadsmuur met de Gentpoort, Smedenpoort, Ezelpoort en Kruispoort,
+  standerdmolens op de wallen, trapgevels, vakwerk, steile daken met schouwen en luiken, kerken met torenspitsen en een hoog Belfort.
 - **Brugge in de stad**: een Venetië van het Noorden. Een ringvaart (de vesten) met vier binnenreien, het Minnewater en
   via de sluis een verbinding met de haven en de zee; bakstenen kaaimuren met kaaitrappen, trapgevelhuizen pal aan het water
   (de Rozenhoedkaai), kleine stenen boogbruggen waar een weg over het water gaat, rondvaartboten, zwanen en eenden.
@@ -181,9 +183,9 @@ Twee weergaven (knop *Toon de stad* / *Toon De Slijkkraak*, of rechtstreeks `dig
   js/city/wegen.js           wegennet als graaf (knopen, takken, overwegen), de bruggen en valideerStad()
   js/city/markers.js         labels en markers boven de stad: schuift ze uit elkaar zodat ze niet overlappen
   js/city/stadmodel.js       van pogingen naar een stad: gebouwen, niveaus, bouwplaatsen, mist, huizen, themagebouwen
-  js/city/modellen.js        low-poly modellen in code (gebouwen, gidsgebouwen, huizen, station, trein, tram, koets, fiets, Belfort ...)
+  js/city/modellen.js        low-poly modellen in code (gebouwen, gidsgebouwen, huizen, station, stoomtrein, Belfort, middeleeuwse huizen met trapgevel of vakwerk ...)
   js/city/stad3d.js          de 3D-stad: licht, dag/nacht, mist, verkeer, bouwanimaties, kaartlagen, camera, tilt-shift
-  js/city/wegen3d.js         wegen, kruispunten, zebrapaden, overwegen, lantaarns, auto's, koetsen en fietsers
+  js/city/wegen3d.js         kasseiwegen, kruispunten, overwegen, lantaarns, paardenkarren, koetsen, ruiters, handkarren en wandelaars
   js/city/water3d.js         de reien, kaaien, bruggen, de waterval, boten, zwanen en de slijklaag (shader)
   js/city/weer3d.js          regen, sneeuw met sneeuwdek, mist, onweer, wind, seizoenskleuren en vallende blaadjes
   js/city/figuren3d.js       gidsen, reizigers en inwoners (één geometrie; elke gids wacht op zijn eigen manier)
@@ -290,7 +292,7 @@ het dashboard, het digibord en de eindbaas lezen alles uit dit object.
 - Wat een reiziger al zag, staat per toestel in `localStorage` (`klets:stad:gezien:<id>`), zodat nieuwe gebouwen bij het openen worden opgebouwd.
 
 ### Prestaties en kwaliteit
-- Gemaakt voor gewone schoollaptops met ingebouwde grafische chip: alle herhaalde dingen (gebouwen, bomen, auto's, lantaarns, regendruppels, mistwolkjes) zijn
+- Gemaakt voor gewone schoollaptops met ingebouwde grafische chip: alle herhaalde dingen (gebouwen, bomen, karren, lantaarns, regendruppels, mistwolkjes) zijn
   *instanced meshes*; één tekenopdracht per soort. Alle figuren samen zijn één tekenopdracht. Ongeveer 100 tekenopdrachten per beeld.
 - Twee standen: **mooi** (schaduwen 2048, tilt-shift en kleurcorrectie, pixelverhouding hoogstens 1,5) en **licht** (schaduwen 1024, geen nabewerking,
   pixelverhouding 1, minder bomen en deeltjes, hoogstens 30 beelden per seconde). Standaard *automatisch*: zakt de beeldsnelheid onder 24, dan schakelt de stad zelf naar licht.
@@ -325,7 +327,6 @@ Beperkingen:
 - **Opslag per toestel.** Elke laptop heeft zijn eigen gegevens. Tot de Supabase-koppeling er is: *Exporteer alles (JSON)* op elke laptop en *Importeer en voeg samen* op de computer van de leerkracht.
 - **De eindbaas** werkt enkel tussen tabbladen van dezelfde browser (BroadcastChannel). Voor echte laptops in de klas: `SupabaseSync`.
 - `SupabaseStore` en `SupabaseSync` zijn stubs met TODO's: project in de EU-regio, Row Level Security per klas, enkel bijnamen.
-- De tram rijdt rond en houdt halt, maar heeft nog geen haltes op het scherm.
 - Spraakopnames zijn nog niet gebouwd; die onderdelen zijn luister- en keuzevragen.
 - De galerij bewaart verkleinde foto's in localStorage (enkele MB per browser).
 - Voorlezen gebruikt de stemmen van het besturingssysteem; zonder Nederlandse stem leest de browser met een andere stem.

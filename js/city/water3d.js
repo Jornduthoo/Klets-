@@ -22,23 +22,24 @@ export const ZONES = ['haven', ...new Set(WATERS.map(w => w.zone).filter(z => z 
 const MAX_ZONES = 8;
 
 const WATER_VS = `
-uniform float uT; varying vec2 vXZ; varying vec3 vN;
+uniform float uT; varying vec2 vXZ; varying vec3 vW;
 #include <fog_pars_vertex>
 void main(){
   vec4 w = modelMatrix * vec4(position, 1.0);
-  float g = sin(w.x * 1.7 + uT * 1.6) * 0.012 + sin(w.z * 2.3 - uT * 1.1) * 0.012;
-  w.y += g;
-  vXZ = w.xz;
-  vN = normalize(vec3(-cos(w.x * 1.7 + uT * 1.6) * 0.05, 1.0, cos(w.z * 2.3 - uT * 1.1) * 0.05));
+  w.y += sin(w.x * 1.7 + uT * 1.6) * 0.012 + sin(w.z * 2.3 - uT * 1.1) * 0.012;
+  vXZ = w.xz; vW = w.xyz;
   vec4 mv = viewMatrix * w;
   gl_Position = projectionMatrix * mv;
   #ifdef USE_FOG
     vFogDepth = - mv.z;
   #endif
 }`;
+// Het water moet altijd als water lezen, ook vol slijk: het spiegelt de lucht (fresnel), schittert in de zon,
+// rimpelt, en er drijft kroos en vuil schuim op. Langs de kaaimuur ligt een lichte schuimrand.
 const WATER_FS = `
-uniform float uT; uniform float uNacht; uniform vec3 uZon; uniform sampler2D uZone; uniform float uRad; uniform float uHelder[${MAX_ZONES}];
-varying vec2 vXZ; varying vec3 vN;
+uniform float uT; uniform float uNacht; uniform vec3 uZon; uniform sampler2D uZone; uniform sampler2D uRand; uniform float uRad; uniform float uHelder[${MAX_ZONES}];
+uniform vec3 uTop; uniform vec3 uHor;
+varying vec2 vXZ; varying vec3 vW;
 #include <fog_pars_fragment>
 float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float vn(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -50,25 +51,58 @@ float zoneHelder(vec2 p){
   for (int i = 0; i < ${MAX_ZONES}; i++) { if (abs(float(i) - id) < 0.5) h = uHelder[i]; }
   return h;
 }
+vec2 golf(vec2 p, vec2 d, float f, float s, float a){ float ph = dot(p, d) * f + uT * s; return d * cos(ph) * a * f; }
 void main(){
-  // zachte overgang tussen twee zones: vijf monsters rond het punt
   float h = (zoneHelder(vXZ) * 2.0 + zoneHelder(vXZ + vec2(0.45, 0.0)) + zoneHelder(vXZ - vec2(0.45, 0.0))
            + zoneHelder(vXZ + vec2(0.0, 0.45)) + zoneHelder(vXZ - vec2(0.0, 0.45))) / 6.0;
+  float rand = texture2D(uRand, vXZ / (2.0 * uRad) + 0.5).r;       // 0 aan de kaaimuur, 1 midden in het water
+  // golfjes: een paar lopende golven plus ruis, voor de normaal
+  vec2 g = golf(vXZ, vec2(0.8, 0.6), 2.1, 1.7, 0.035) + golf(vXZ, vec2(-0.5, 0.86), 3.3, -2.3, 0.022)
+         + golf(vXZ, vec2(0.96, -0.28), 5.2, 2.9, 0.012) + golf(vXZ, vec2(-0.2, -0.98), 7.9, -3.6, 0.007);
   float n = vn(vXZ * 0.9 + vec2(uT * 0.05, -uT * 0.03));
   float n2 = vn(vXZ * 3.1 - vec2(uT * 0.11, uT * 0.07));
+  float n3 = vn(vXZ * 1.7 + vec2(-uT * 0.06, uT * 0.04) + 13.0);
+  g += (vec2(vn(vXZ * 4.0 + uT * 0.4), vn(vXZ * 4.0 - uT * 0.4 + 7.0)) - 0.5) * 0.12;
+  float ruw = mix(1.0, 0.55, smoothstep(0.55, 0.8, n3) * (1.0 - h));        // waar kroos ligt, is het water vlakker
+  vec3 N = normalize(vec3(-g.x * ruw, 1.0, -g.y * ruw));
+  vec3 V = normalize(cameraPosition - vW);
+  vec3 L = normalize(uZon);
+  float ndv = max(dot(N, V), 0.0);
+  float fres = 0.26 + 0.74 * pow(1.0 - ndv, 3.0);
+  vec3 R = reflect(-V, N);
+  vec3 lucht = mix(uHor, uTop, smoothstep(0.0, 0.7, R.y));
+  lucht = mix(lucht, uHor * 1.15, smoothstep(0.55, 0.85, vn(R.xz / max(R.y, 0.15) * 2.0 + uT * 0.02)) * 0.5);   // wolken in de weerspiegeling
   // kleuren in lineaire ruimte (de renderer zet ze om naar sRGB)
-  vec3 diep = vec3(0.012, 0.16, 0.40), licht = vec3(0.05, 0.42, 0.62);
+  vec3 diep = vec3(0.012, 0.15, 0.36), licht = vec3(0.05, 0.40, 0.60);
   vec3 helder = mix(diep, licht, 0.35 + 0.4 * n);
-  // vies water: troebel bruingroen (erwtensoep) met kroos en schuimstrepen, maar wel nog glanzend water
-  vec3 slijk = mix(vec3(0.11, 0.085, 0.030), vec3(0.20, 0.19, 0.050), smoothstep(0.3, 0.85, n));
-  slijk = mix(slijk, vec3(0.16, 0.24, 0.035), smoothstep(0.70, 0.88, n2) * 0.85);   // kroos
-  slijk = mix(slijk, vec3(0.42, 0.38, 0.24), smoothstep(0.93, 0.985, n2) * 0.7);    // vuil schuim
-  vec3 c = mix(slijk, helder, smoothstep(0.0, 1.0, h));
-  float gl = pow(max(dot(normalize(vN), normalize(uZon)), 0.0), 28.0);
-  c += vec3(1.0, 0.98, 0.9) * gl * (0.28 + 0.6 * h) * (1.0 - uNacht * 0.75);
-  c += mix(vec3(0.05, 0.05, 0.02), vec3(0.10, 0.16, 0.18), h) * smoothstep(0.78, 0.96, n2);   // rimpels
+  // vies water: troebel donker groenbruin, met drijvend kroos en vuil schuim
+  vec3 slijk = mix(vec3(0.040, 0.046, 0.014), vec3(0.085, 0.090, 0.024), smoothstep(0.25, 0.85, n));
+  float kroos = smoothstep(0.62, 0.72, n3) * (0.6 + 0.4 * n2);
+  vec3 c = slijk;
+  vec3 hel = mix(slijk, helder, smoothstep(0.0, 1.0, h));
+  float glans = mix(0.75, 0.9, h);
+  // brede glans: de golfjes vangen het licht van de lucht (ook zonder zon in beeld)
+  float zacht = pow(max(dot(N, normalize(V + vec3(0.25, 1.4, -0.35))), 0.0), 26.0);
+  float vlek = smoothstep(0.35, 0.75, vn(vXZ * 0.45 + vec2(uT * 0.03, uT * 0.02)));
+  c = mix(hel, lucht * mix(vec3(0.62, 0.66, 0.4), vec3(1.0), h), clamp(fres * glans + zacht * (0.35 + 0.35 * vlek), 0.0, 0.85));
+  // kroos en schuim drijven bovenop (geen weerspiegeling)
+  vec3 kroosK = mix(vec3(0.13, 0.20, 0.025), vec3(0.26, 0.32, 0.05), n2);
+  c = mix(c, kroosK, kroos * (1.0 - h) * 0.9);
+  float schuim = smoothstep(0.86, 0.95, n2) * smoothstep(0.35, 0.6, n);
+  c = mix(c, vec3(0.55, 0.52, 0.36), schuim * (1.0 - h) * 0.75);
+  // rimpels: lichte lijntjes die meedrijven
+  float rimpel = smoothstep(0.035, 0.0, abs(fract(dot(vXZ, vec2(0.7, 0.7)) * 1.3 + n * 2.2 - uT * 0.25) - 0.5)) * smoothstep(0.4, 0.7, n2);
+  c += lucht * rimpel * 0.22 * (1.0 - kroos);
+  // zon: scherpe glinsters
+  float sp = pow(max(dot(N, normalize(L + V)), 0.0), 180.0);
+  float fon = step(0.82, h21(floor(vXZ * 9.0) + floor(uT * 3.0)));
+  c += vec3(1.0, 0.95, 0.82) * (sp * 3.0 + sp * fon * 4.0) * (1.0 - kroos) * (1.0 - uNacht * 0.85);
+  // aan de kaaimuur: een donkere natte rand en een streep schuim
+  float lijn = smoothstep(0.02, 0.07, rand) * smoothstep(0.2, 0.09, rand) * (0.6 + 0.4 * sin(vXZ.x * 3.0 + vXZ.y * 2.0 + uT * 1.5));
+  c = mix(c * 0.55, c, smoothstep(0.0, 0.05, rand));
+  c = mix(c, mix(vec3(0.62, 0.6, 0.42), vec3(0.85, 0.92, 0.95), h), lijn * 0.55);
   c *= mix(1.0, 0.33, uNacht);
-  gl_FragColor = vec4(c, mix(0.985, 0.86, h));
+  gl_FragColor = vec4(c, 1.0);
   #include <colorspace_fragment>
   #include <fog_fragment>
 }`;
@@ -112,6 +146,8 @@ export class Water3D {
   _zoneKaart() {
     const N = 512, data = new Uint8Array(N * N * 4);
     const idx = Object.fromEntries(ZONES.map((z, i) => [z, i]));
+    // afstand tot de kaaimuur (in texels), voor de schuimrand: eerst nat of droog, dan een afstandstransformatie
+    const af = new Float32Array(N * N);
     for (let j = 0; j < N; j++) {
       const z = ((j + 0.5) / N - 0.5) * 2 * RAD;
       for (let i = 0; i < N; i++) {
@@ -119,24 +155,40 @@ export class Water3D {
         const w = inWater(x, z, 0.9);
         data[(j * N + i) * 4] = (w ? idx[w.zone] ?? 0 : 0) * 32;
         data[(j * N + i) * 4 + 3] = 255;
+        af[j * N + i] = w && inWater(x, z, 0) ? 1e6 : 0;
       }
     }
+    // buiten de grondschijf is het open zee: geen kaai
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const x = ((i + 0.5) / N - 0.5) * 2 * RAD, z = ((j + 0.5) / N - 0.5) * 2 * RAD; if (Math.hypot(x, z) > RAD - 1 && af[j * N + i] > 0) af[j * N + i] = 1e6; }
+    const D = Math.SQRT2;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * N + i; let v = af[k]; if (!v) continue;
+      if (i > 0) v = Math.min(v, af[k - 1] + 1); if (j > 0) { v = Math.min(v, af[k - N] + 1); if (i > 0) v = Math.min(v, af[k - N - 1] + D); if (i < N - 1) v = Math.min(v, af[k - N + 1] + D); } af[k] = v; }
+    for (let j = N - 1; j >= 0; j--) for (let i = N - 1; i >= 0; i--) { const k = j * N + i; let v = af[k]; if (!v) continue;
+      if (i < N - 1) v = Math.min(v, af[k + 1] + 1); if (j < N - 1) { v = Math.min(v, af[k + N] + 1); if (i < N - 1) v = Math.min(v, af[k + N + 1] + D); if (i > 0) v = Math.min(v, af[k + N - 1] + D); } af[k] = v; }
+    const texel = 2 * RAD / N, rd = new Uint8Array(N * N * 4);
+    for (let k = 0; k < N * N; k++) { const v = Math.min(1, af[k] * texel / 1.6); rd[k * 4] = Math.round(v * 255); rd[k * 4 + 3] = 255; }
     const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
     t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
     t.needsUpdate = true;
+    const r = new THREE.DataTexture(rd, N, N, THREE.RGBAFormat);
+    r.magFilter = THREE.LinearFilter; r.minFilter = THREE.LinearFilter; r.generateMipmaps = false;
+    r.wrapS = r.wrapT = THREE.ClampToEdgeWrapping;
+    r.needsUpdate = true;
+    this.randKaart = r;
     return t;
   }
   _bouwWater() {
     this.uHelder = { value: new Array(MAX_ZONES).fill(0) };
     this.waterMat = new THREE.ShaderMaterial({
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-        uT: { value: 0 }, uNacht: { value: 0 }, uZon: { value: new THREE.Vector3(0.4, 0.8, 0.3) }, uZone: { value: null }, uRad: { value: RAD }, uHelder: { value: null },
+        uT: { value: 0 }, uNacht: { value: 0 }, uZon: { value: new THREE.Vector3(0.4, 0.8, 0.3) }, uZone: { value: null }, uRand: { value: null }, uRad: { value: RAD }, uHelder: { value: null },
+        uTop: { value: new THREE.Color('#4ea3ee') }, uHor: { value: new THREE.Color('#d6ecfb') },
       }]),
-      vertexShader: WATER_VS, fragmentShader: WATER_FS, transparent: true, depthWrite: true, fog: true,
+      vertexShader: WATER_VS, fragmentShader: WATER_FS, transparent: false, depthWrite: true, fog: true,
     });
     const u = this.waterMat.uniforms;
-    u.uT = this.uT; u.uZone.value = this._zoneKaart(); u.uHelder = this.uHelder;
+    u.uT = this.uT; u.uZone.value = this._zoneKaart(); u.uRand.value = this.randKaart; u.uHelder = this.uHelder;
     const geo = new THREE.PlaneGeometry(340, 300, 120, 110).rotateX(-Math.PI / 2);
     this.vlak = new THREE.Mesh(geo, this.waterMat);
     this.vlak.position.set(0, WATER_Y, -35);
@@ -239,13 +291,23 @@ export class Water3D {
     // vaarroutes (heen en terug, of een lus), elk met een thuiszone: daar moet het water een beetje proper zijn
     const routes = [
       { zone: 'reie-zuid', soort: 'reie', pad: new Pad([P(-0.9, 11.3), P(0.8, 13.0), P(0, 15.5), P(0, 26.0), P(2.8, 28.0), P(6.5, 29.4)]), v: 0.55 },
-      { zone: 'reie-noord', soort: 'reie', pad: new Pad([P(0, -11.4), P(0, -29.0), ...boog(VEST_R, gr(266), gr(184)), P(-27.5, -0.3), P(-18.4, 0)]), v: 0.6 },
-      { zone: 'reie-zuid', soort: 'reie', pad: new Pad([P(18.4, 0), P(29.2, 0), ...boog(VEST_R, gr(3), gr(72))]), v: 0.5 },
+      { zone: 'reie-noord', soort: 'reie', pad: new Pad([P(0.3, -11.6), P(0.3, -29.0), ...boog(VEST_R, gr(266), gr(184)), P(-27.5, -0.3), P(-11.6, -0.3)]), v: 0.6 },
+      { zone: 'reie-zuid', soort: 'reie', pad: new Pad([P(11.6, 0.3), P(29.2, 0.3), ...boog(VEST_R, gr(3), gr(72))]), v: 0.5 },
       { zone: 'noordrei', soort: 'aak', pad: new Pad([P(0, -52.4), P(0, -31.2), ...boog(VEST_R, gr(272), gr(312))]), v: 0.4 },
       { zone: 'minnewater', soort: 'roei', pad: new Pad(boog(1, 0, TAU * 0.98, 0.05).map(p => P(p.x * 4.6, 28.6 + p.z * 1.25)), true), v: 0.32 },
       { zone: 'minnewater', soort: 'reie', pad: new Pad([...boog(VEST_R, gr(48), gr(132))]), v: 0.45 },
-      { zone: 'haven', soort: 'vracht', pad: new Pad([P(0, -61.5), P(-2, -72), P(-8, -88)]), v: 0.5, groot: true },
-      { zone: 'haven', soort: 'zeil', pad: new Pad(boog(1, 0, TAU * 0.98, 0.04).map(p => P(14 + p.x * 9, -82 + p.z * 5)), true), v: 0.7 },
+      { zone: 'haven', soort: 'kogge', pad: new Pad([P(0, -61.5), P(-2, -72), P(-8, -88)]), v: 0.5, groot: true, altijd: true },
+      { zone: 'haven', soort: 'zeil', pad: new Pad(boog(1, 0, TAU * 0.98, 0.04).map(p => P(14 + p.x * 9, -82 + p.z * 5)), true), v: 0.7, altijd: true },
+      // slijkvissers: zolang het water vuil is, scheppen ze slijk uit de reien en de vesten
+      { zone: 'reie-zuid', soort: 'bagger', pad: new Pad([P(-0.5, 15.0), P(-0.5, 25.5)]), v: 0.18, vuil: true },
+      { zone: 'reie-zuid', soort: 'bagger', pad: new Pad([P(13.0, -0.4), P(26.5, -0.4)]), v: 0.16, vuil: true },
+      { zone: 'reie-noord', soort: 'bagger', pad: new Pad([P(0.4, -13.0), P(0.4, -26.5)]), v: 0.17, vuil: true },
+      { zone: 'reie-noord', soort: 'bagger', pad: new Pad([P(-13.0, 0.4), P(-26.5, 0.4)]), v: 0.15, vuil: true },
+      { zone: 'reie-noord', soort: 'bagger', pad: new Pad(boog(VEST_R + 0.6, gr(150), gr(210))), v: 0.2, vuil: true },
+      { zone: 'reie-zuid', soort: 'bagger', pad: new Pad(boog(VEST_R - 0.6, gr(-30), gr(30))), v: 0.2, vuil: true },
+      { zone: 'noordrei', soort: 'bagger', pad: new Pad([P(-0.4, -34), P(-0.4, -50)]), v: 0.16, vuil: true },
+      { zone: 'minnewater', soort: 'bagger', pad: new Pad(boog(1, 0, TAU * 0.98, 0.05).map(p => P(p.x * 3.2, 28.6 + p.z * 0.9)), true), v: 0.15, vuil: true },
+      { zone: 'noordrei', soort: 'bagger', pad: new Pad(boog(VEST_R, gr(240), gr(300))), v: 0.18, vuil: true },
     ];
     const geos = {};
     this.boten = routes.map((rt, i) => {
@@ -256,7 +318,7 @@ export class Water3D {
     });
     // aangemeerde bootjes langs de kaaien
     const roei = bootGeo('roei').body;
-    const plekken = (this.trapPunten || []).slice(0, 10);
+    const plekken = (this.trapPunten || []).slice(0, 16);
     this.aangemeerd = new THREE.InstancedMesh(roei, mat, Math.max(1, plekken.length));
     plekken.forEach((p, i) => {
       const x = p.x - p.nx * 0.55 + p.tx * 1.1, z = p.z - p.nz * 0.55 + p.tz * 1.1;
@@ -273,7 +335,7 @@ export class Water3D {
       const g = geoD[soort] || (geoD[soort] = dierGeo(soort));
       const m = new THREE.Mesh(g, mat); m.castShadow = soort !== 'vis'; m.visible = false;
       this.scene.add(m);
-      const d = { obj: m, soort, w, zone: zone || w.zone, f: this.r() * 10, v: (0.12 + this.r() * 0.12) * (this.r() < 0.5 ? 1 : -1), ...opts };
+      const d = { obj: m, soort, w, zone: zone || w.zone, f: this.r() * 10, v: (0.12 + this.r() * 0.12) * (this.r() < 0.5 ? 1 : -1), taai: soort === 'eend' && this.dieren.length % 3 === 0, ...opts };
       if (w.soort === 'strook') { d.s = 0.6 + this.r() * (w.L - 1.2); d.lat = (this.r() - 0.5) * w.halfB * 1.1; }
       else if (w.soort === 'boog') { d.a = w.a0 + 0.05 + this.r() * (w.a1 - w.a0 - 0.1); d.lat = (this.r() - 0.5) * w.halfB * 1.1; }
       else { d.a = this.r() * TAU; d.k = 0.25 + this.r() * 0.55; }
@@ -320,7 +382,7 @@ export class Water3D {
     for (const w of WATERS) {
       if (w.id === 'zee') continue;
       const lengte = w.soort === 'strook' ? w.L : w.soort === 'boog' ? (w.a1 - w.a0) * w.r : Math.PI * (w.rx + w.rz);
-      const n = Math.max(2, Math.round(lengte / 6));
+      const n = Math.max(2, Math.round(lengte / 4.2));
       for (let i = 0; i < n; i++) {
         let x, z;
         if (w.soort === 'strook') { const s = (i + 0.2 + this.r() * 0.6) / n * w.L, d = (this.r() - 0.5) * w.halfB * 0.9; x = w.x0 + w.dx * s + w.nx * d; z = w.z0 + w.dz * s + w.nz * d; }
@@ -363,8 +425,10 @@ export class Water3D {
     return { x: w.x + c * w.rx * d.k, z: w.z + s * w.rz * d.k, hx: -s * w.rx * sg, hz: c * w.rz * sg };
   }
 
-  tick(dt, t, { nacht = 0, zonDir, wind = 0 } = {}) {
+  tick(dt, t, { nacht = 0, zonDir, wind = 0, top, hor } = {}) {
     this.uT.value = t;
+    if (top) this.waterMat.uniforms.uTop.value.copy(top);
+    if (hor) this.waterMat.uniforms.uHor.value.copy(hor);
     const k = 1 - Math.exp(-dt * 0.9);
     for (const zone of Object.keys(this.doelHelder)) this.zoneHelder[zone] = lerp(this.zoneHelder[zone] ?? 0, this.doelHelder[zone], k);
     const u = this.waterMat.uniforms;
@@ -385,7 +449,7 @@ export class Water3D {
     // boten varen hun route, maar enkel als het water van hun thuiszone al een beetje proper is
     for (const b of this.boten) {
       const h = this.zoneHelder[b.rt.zone] ?? 0;
-      b.obj.visible = h > 0.25;
+      b.obj.visible = b.rt.altijd || (b.rt.vuil ? h < 0.6 : h > 0.25);
       if (!b.obj.visible) continue;
       if (b.wacht > 0) b.wacht -= dt;
       else {
@@ -398,11 +462,11 @@ export class Water3D {
       golf(p.x, p.z, b.rt.groot ? 4.2 : 1.5);
     }
     const aan = this.aangemeerdZones || [];
-    this.aangemeerd.visible = aan.length > 0 && aan.some(z => (this.zoneHelder[z] ?? 0) > 0.3);
+    this.aangemeerd.visible = aan.length > 0;
     // dieren: zichtbaar naar de helderheid, en ze zwemmen zachtjes langs de rei
     for (const d of this.dieren) {
       const h = this.zoneHelder[d.zone] ?? 0;
-      const drempel = d.soort === 'vis' ? 0.5 : d.soort === 'zwaan' ? 0.6 : 0.4;
+      const drempel = d.taai ? -1 : d.soort === 'vis' ? 0.5 : d.soort === 'zwaan' ? 0.6 : 0.4;
       d.obj.visible = h > drempel;
       if (!d.obj.visible || d.vast) continue;
       const p = this._dierPos(d, t, dt);

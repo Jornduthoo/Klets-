@@ -1,12 +1,12 @@
-// Wegen, kruispunten, zebrapaden, overwegen, lantaarns en verkeer van de 3D-stad.
-// Alles volgt de graaf uit wegen.js: auto's rijden rechts op hun rijstrook, slaan af op kruispunten
-// en wachten voor de slagbomen als de trein komt.
+// Straten met kasseien, pleintjes op de kruispunten, overwegen, lantaarns en het middeleeuwse verkeer van de 3D-stad:
+// boerenkarren met een paard, koetsen, ruiters, handkarren en wandelaars. Alles volgt de graaf uit wegen.js:
+// ze houden rechts, slaan af op kruispunten en wachten voor de slagbomen als de trein komt.
 import * as THREE from '../../vendor/three.module.min.js';
 import { rng, clamp } from '../core/util.js';
 import { RINGEN, RIJBAAN, STOEP, WEG_HALF, RIJSTROOK, SPOOR_Z, SPOOR_HALF, SPOOR_SPOREN, SPOOR_X, LAAN_HOEKEN, polar, hoekVerschil, inWater } from './layout.js';
 import { wegennet, takPunt, rijPunt, takLijn, KRUIS, bruggen } from './wegen.js';
-import { Bouwer, autoGeo, lampGeo } from './modellen.js';
-import { koetsGeo, fietsGeo } from './brugge.js';
+import { Bouwer, lampGeo } from './modellen.js';
+import { koetsGeo, karGeo, handkarGeo, wandelaarGeo, ruiterGeo } from './brugge.js';
 
 const TAU = Math.PI * 2;
 const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), Q2 = new THREE.Quaternion(), V3 = new THREE.Vector3(), S3 = new THREE.Vector3(), K = new THREE.Color();
@@ -22,48 +22,61 @@ function canvasTex(w, h, teken, herhaal = false) {
   if (herhaal) { t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; }
   return t;
 }
-const ASFALT = '#5d6676', STOEPK = '#dcd8cf', BOORD = '#b5b0a6', LIJN = '#eef1f5';
-const stoepPx = (n) => Math.round(n * STOEP / BR);
+// Middeleeuwse straten: kasseien in warm grijsbruin, met een rand van grotere stenen en een goot in het midden.
+const KASSEI = ['#9c8f7c', '#a89a85', '#8f8270', '#b0a28a', '#978a76', '#a3937c'];
+const VOEG = '#6f6455', RAND = '#bcae95', RAND2 = '#a99b82';
+const randPx = (n) => Math.round(n * STOEP / BR);
+/** Een veld kasseien tekenen in een rechthoek (rijen met verspringende stenen). */
+function kasseien(g, x0, y0, w, h, steen = 7, rnd = Math.random, verticaal = false) {
+  g.fillStyle = VOEG; g.fillRect(x0, y0, w, h);
+  const rij = steen, lang = steen * 1.25;
+  if (!verticaal) {
+    for (let y = y0, k = 0; y < y0 + h; y += rij, k++) for (let x = x0 - (k % 2 ? lang / 2 : 0); x < x0 + w; x += lang) {
+      g.fillStyle = KASSEI[Math.floor(rnd() * KASSEI.length)];
+      const xa = Math.max(x0, x + 0.8), xb = Math.min(x0 + w, x + lang - 0.8), ya = y + 0.8, yb = Math.min(y0 + h, y + rij - 0.8);
+      if (xb > xa && yb > ya) { g.fillRect(xa, ya, xb - xa, yb - ya); g.fillStyle = 'rgba(255,248,230,0.16)'; g.fillRect(xa, ya, xb - xa, 1.2); }
+    }
+  } else {
+    for (let x = x0, k = 0; x < x0 + w; x += rij, k++) for (let y = y0 - (k % 2 ? lang / 2 : 0); y < y0 + h; y += lang) {
+      g.fillStyle = KASSEI[Math.floor(rnd() * KASSEI.length)];
+      const ya = Math.max(y0, y + 0.8), yb = Math.min(y0 + h, y + lang - 0.8), xa = x + 0.8, xb = Math.min(x0 + w, x + rij - 0.8);
+      if (xb > xa && yb > ya) { g.fillRect(xa, ya, xb - xa, yb - ya); g.fillStyle = 'rgba(255,248,230,0.16)'; g.fillRect(xa, ya, 1.2, yb - ya); }
+    }
+  }
+}
+function randStenen(g, x0, y0, w, h, verticaal = false) {
+  g.fillStyle = VOEG; g.fillRect(x0, y0, w, h);
+  const st = 16;
+  if (!verticaal) for (let x = x0; x < x0 + w; x += st) { g.fillStyle = Math.random() < 0.5 ? RAND : RAND2; g.fillRect(x + 1, y0 + 1, st - 2, h - 2); }
+  else for (let y = y0; y < y0 + h; y += st) { g.fillStyle = Math.random() < 0.5 ? RAND : RAND2; g.fillRect(x0 + 1, y + 1, w - 2, st - 2); }
+}
 
-/** Rechte weg: v dwars (stoep - asfalt - stoep), u langs de weg (herhaalt elke 3 eenheden). */
+/** Rechte straat: v dwars (rand - kasseien - rand), u langs de straat (herhaalt elke 3 eenheden). */
 function wegTex() {
-  return canvasTex(128, 128, (g, w, h) => {
-    const sp = stoepPx(h);
-    g.fillStyle = STOEPK; g.fillRect(0, 0, w, h);
-    g.fillStyle = '#cbc6bc'; for (let x = 0; x < w; x += 16) { g.fillRect(x, 0, 1, sp); g.fillRect(x, h - sp, 1, sp); }
-    g.fillStyle = ASFALT; g.fillRect(0, sp, w, h - 2 * sp);
-    for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? '255,255,255' : '0,0,0'},0.05)`; g.fillRect(Math.random() * w, sp + Math.random() * (h - sp * 2), 2, 2); }
-    g.fillStyle = BOORD; g.fillRect(0, sp - 2, w, 2); g.fillRect(0, h - sp, w, 2);
-    g.fillStyle = LIJN; g.fillRect(0, sp + 3, w, 2); g.fillRect(0, h - sp - 5, w, 2);
-    g.fillStyle = '#f2f2ea'; g.fillRect(0, h / 2 - 1.5, w * 0.5, 3);
+  return canvasTex(256, 128, (g, w, h) => {
+    const sp = randPx(h);
+    kasseien(g, 0, sp, w, h - 2 * sp, 9);
+    randStenen(g, 0, 0, w, sp); randStenen(g, 0, h - sp, w, sp);
+    // een ondiepe goot in het midden en wat slijtage van de karrenwielen
+    g.fillStyle = 'rgba(60,50,40,0.18)'; g.fillRect(0, h / 2 - 2, w, 4);
+    g.fillStyle = 'rgba(70,58,45,0.10)'; g.fillRect(0, h * 0.3, w, 6); g.fillRect(0, h * 0.7 - 6, w, 6);
   }, true);
 }
-/** Kruispunt: links een X (vier hoekstoepen), rechts een T (stoep doorlopend aan de onderkant = de kant zonder weg). */
+/** Kruispunt (pleintje): links een X, rechts een T (rand doorlopend aan de onderkant = de kant zonder straat). */
 function kruisTex() {
   return canvasTex(256, 128, (g) => {
-    const n = 128, sp = stoepPx(n);
+    const n = 128, sp = randPx(n);
     for (const [x0, T] of [[0, false], [128, true]]) {
-      g.fillStyle = ASFALT; g.fillRect(x0, 0, n, n);
-      for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? '255,255,255' : '0,0,0'},0.05)`; g.fillRect(x0 + Math.random() * n, Math.random() * n, 2, 2); }
-      g.fillStyle = STOEPK;
-      const hoek = (x, y) => { g.beginPath(); g.rect(x, y, sp, sp); g.fill(); };
+      kasseien(g, x0, 0, n, n, 9);
+      // een waaier van kasseien in het midden
+      g.strokeStyle = 'rgba(70,58,45,0.35)'; g.lineWidth = 1.5;
+      for (let r = 10; r < n * 0.5; r += 11) { g.beginPath(); g.arc(x0 + n / 2, n / 2, r, 0, Math.PI * 2); g.stroke(); }
+      const hoek = (x, y) => randStenen(g, x, y, sp, sp);
       hoek(x0, 0); hoek(x0 + n - sp, 0); hoek(x0, n - sp); hoek(x0 + n - sp, n - sp);
-      if (T) { g.fillRect(x0, n - sp, n, sp); g.fillStyle = BOORD; g.fillRect(x0, n - sp, n, 2); g.fillStyle = LIJN; g.fillRect(x0 + sp, n - sp - 5, n - 2 * sp, 2); }
-      g.fillStyle = BOORD;
-      g.fillRect(x0 + sp - 2, 0, 2, sp); g.fillRect(x0, sp - 2, sp, 2);
-      g.fillRect(x0 + n - sp, 0, 2, sp); g.fillRect(x0 + n - sp, sp - 2, sp, 2);
-      if (!T) { g.fillRect(x0 + sp - 2, n - sp, 2, sp); g.fillRect(x0, n - sp, sp, 2); g.fillRect(x0 + n - sp, n - sp, 2, sp); g.fillRect(x0 + n - sp, n - sp, sp, 2); }
+      if (T) randStenen(g, x0, n - sp, n, sp);
     }
   });
 }
-function zebraTex() {
-  return canvasTex(64, 32, (g, w, h) => {
-    g.clearRect(0, 0, w, h);
-    g.fillStyle = 'rgba(250,250,245,0.95)';
-    for (let x = 3; x < w - 2; x += 8) g.fillRect(x, 3, 4, h - 6);
-  });
-}
-
 function strookGeo(punten, breed, y = Y_WEG) {
   const pos = [], uv = [], nor = [], idx = []; let L = 0;
   for (let i = 0; i < punten.length; i++) {
@@ -114,7 +127,6 @@ export class Wegen3D {
     this.groep = new THREE.Group(); this.scene.add(this.groep);
     this.wegMat = new THREE.MeshLambertMaterial({ map: wegTex(), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
     this.kruisMat = new THREE.MeshLambertMaterial({ map: kruisTex(), polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
-    this.zebraMat = new THREE.MeshLambertMaterial({ map: zebraTex(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 });
     this.stadR = null;
     this._bouwLampen();
     this._bouwOverwegDelen();
@@ -132,7 +144,7 @@ export class Wegen3D {
     const delen = net.takken.map(t => strookGeo(takLijn(t, t.soort === 'ring' ? 0.45 : 1, KRUIS, KRUIS), BR));
     const wegen = new THREE.Mesh(voegSamen(delen), this.wegMat); wegen.receiveShadow = true; this.groep.add(wegen);
     // kruispuntvlakken
-    const kd = [], zd = [];
+    const kd = [];
     const h = KRUIS + 0.04;
     for (const k of net.knopen) {
       const rx = Math.cos(k.hoek), rz = Math.sin(k.hoek), tx = -rz, tz = rx;
@@ -143,13 +155,6 @@ export class Wegen3D {
       kd.push(quad(P(-h, -h), P(h, -h), P(h, h), P(-h, h), [u0, vin, u1, vin, u1, vout, u0, vout], Y_WEG + 0.004));
     }
     const kruis = new THREE.Mesh(voegSamen(kd), this.kruisMat); kruis.receiveShadow = true; this.groep.add(kruis);
-    // zebrapaden aan elk uiteinde van elk wegvak
-    for (const t of net.takken) for (const s of [KRUIS + 0.32, t.lengte - KRUIS - 0.32]) {
-      const p = takPunt(t, s), qx = -p.dz, qz = p.dx, hw = RIJBAAN / 2 - 0.05, hl = 0.24;
-      const P = (a, b) => ({ x: p.x + qx * a + p.dx * b, z: p.z + qz * a + p.dz * b });
-      zd.push(quad(P(-hw, -hl), P(hw, -hl), P(hw, hl), P(-hw, hl), [0, 0, 1, 0, 1, 1, 0, 1], Y_WEG + 0.008));
-    }
-    const zebra = new THREE.Mesh(voegSamen(zd), this.zebraMat); zebra.renderOrder = 1; this.groep.add(zebra);
     this._zetOverwegen();
     this._zetDwarsliggers();
     // lantaarns tot aan de rand van de stad
@@ -276,7 +281,7 @@ export class Wegen3D {
     this.lampen = pos;
     const paal = new THREE.InstancedMesh(lampGeo(), new THREE.MeshLambertMaterial({ vertexColors: true }), pos.length);
     this.lampKopMat = new THREE.MeshBasicMaterial({ color: '#777777' });
-    const kop = new THREE.InstancedMesh(new THREE.BoxGeometry(0.16, 0.05, 0.1), this.lampKopMat, pos.length);
+    const kop = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, 0.13, 0.1), this.lampKopMat, pos.length);
     this.lampGloedMat = new THREE.MeshBasicMaterial({ map: this.stad.gloedTex, color: '#ffcf7a', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
     const gl = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), this.lampGloedMat, pos.length);
     pos.forEach((p, i) => {
@@ -284,8 +289,8 @@ export class Wegen3D {
       const rot = Math.atan2(-p.armZ, p.armX);
       Q.setFromAxisAngle(YAS, rot);
       M4.compose(V3.set(p.x, 0, p.z), Q, S3.set(1, 1, 1)); paal.setMatrixAt(i, M4);
-      const ox = p.armX * 0.16, oz = p.armZ * 0.16;
-      M4.compose(V3.set(p.x + ox, 0.88, p.z + oz), Q, S3.set(1, 1, 1)); kop.setMatrixAt(i, M4);
+      const ox = p.armX * 0.17, oz = p.armZ * 0.17;
+      M4.compose(V3.set(p.x + ox, 0.71, p.z + oz), Q, S3.set(1, 1, 1)); kop.setMatrixAt(i, M4);
       M4.compose(V3.set(p.x + ox * 2, 0.04, p.z + oz * 2), Q, S3.set(1.9, 1, 1.9)); gl.setMatrixAt(i, M4);
     });
     paal.castShadow = true;
@@ -296,38 +301,41 @@ export class Wegen3D {
 
   // ---------- verkeer ----------
   _bouwAutos() {
-    const n = this.stad.kwaliteit === 'hoog' ? 80 : 46;
+    const n = this.stad.kwaliteit === 'hoog' ? 70 : 40;
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-    this.autos = new THREE.InstancedMesh(autoGeo(), mat, n);
-    this.autos.castShadow = true; this.autos.count = 0; this.scene.add(this.autos);
-    const kl = ['#e2643e', '#3d8fe0', '#f6c445', '#ffffff', '#38b37a', '#e9578a', '#2d3240', '#9a68e0', '#f0a531', '#c7ced8'];
-    for (let i = 0; i < n; i++) this.autos.setColorAt(i, K.set(kl[i % kl.length]));
-    // Brugse paardenkoetsen en fietsers rijden tussen de auto's
-    this.koetsen = new THREE.InstancedMesh(koetsGeo().body, mat, Math.max(4, Math.round(n / 8)));
-    this.fietsen = new THREE.InstancedMesh(fietsGeo().body, mat, Math.max(6, Math.round(n / 4)));
-    for (const m of [this.koetsen, this.fietsen]) { m.castShadow = true; m.count = 0; this.scene.add(m); }
+    // middeleeuws verkeer: elke soort is één tekenopdracht
+    this.soorten = {
+      kar: { geo: karGeo().body, v: [0.75, 0.2], kans: 0.26 },
+      koets: { geo: koetsGeo().body, v: [0.95, 0.2], kans: 0.12 },
+      ruiter: { geo: ruiterGeo().body, v: [1.05, 0.25], kans: 0.1 },
+      handkar: { geo: handkarGeo().body, v: [0.45, 0.1], kans: 0.17 },
+      wandelaar: { geo: wandelaarGeo(0).body, v: [0.38, 0.1], kans: 0.2 },
+      wandelaar2: { geo: wandelaarGeo(1).body, v: [0.36, 0.1], kans: 0.15 },
+    };
+    for (const s of Object.values(this.soorten)) { s.mesh = new THREE.InstancedMesh(s.geo, mat, n); s.mesh.castShadow = true; s.mesh.count = 0; this.scene.add(s.mesh); }
+    this.max = n;
     this.autoData = [];
     this.rr = rng('verkeer');
   }
   _zetAutos() {
     const net = this.net, rr = rng('autos-' + net.stadR.toFixed(1));
     const totaal = net.takken.reduce((s, t) => s + t.lengte, 0);
-    const n = Math.min(this.autos.instanceMatrix.count, Math.round(totaal * 2 / 13));
+    const n = Math.min(this.max, Math.round(totaal * 2 / 17));
     this.autoData = [];
-    // verdeel over de takken naar lengte, met afstand tussen de auto's
+    const soorten = Object.entries(this.soorten);
+    // verdeel over de takken naar lengte, met afstand ertussen
     for (let i = 0; i < n; i++) {
       let x = rr() * totaal, t = net.takken[0];
       for (const tk of net.takken) { if (x < tk.lengte) { t = tk; break; } x -= tk.lengte; }
       const dir = rr() < 0.5 ? 1 : -1;
       const L = t.lengte - 2 * KRUIS; if (L < 1) continue;
       const p = KRUIS + rr() * L;
-      if (this.autoData.some(a => a.tak === t && a.dir === dir && Math.abs(a.p - p) < 1.3)) continue;
-      const w = rr();
-      const soort = w < 0.1 ? 'koets' : w < 0.3 ? 'fiets' : 'auto';
-      const v = soort === 'koets' ? 1.1 + rr() * 0.2 : soort === 'fiets' ? 1.4 + rr() * 0.4 : 1.9 + rr() * 0.5;
-      this.autoData.push({ tak: t, dir, p, v, soort, bocht: null });
+      if (this.autoData.some(a => a.tak === t && a.dir === dir && Math.abs(a.p - p) < 1.5)) continue;
+      let w = rr(), soort = soorten[0][0];
+      for (const [k, s] of soorten) { if (w < s.kans) { soort = k; break; } w -= s.kans; }
+      const sd = this.soorten[soort];
+      this.autoData.push({ tak: t, dir, p, v: sd.v[0] + rr() * sd.v[1], soort, bocht: null, f: rr() * 9 });
     }
-    this.autos.count = this.autoData.length;
   }
   _sNaarP(a) { return a.dir > 0 ? a.p : a.tak.lengte - a.p; } // p = afgelegde weg vanaf het begin in rijrichting
   _volgende(a) {
@@ -375,17 +383,14 @@ export class Wegen3D {
         if (a.p >= L - KRUIS - 1e-3 && i === 0) this._volgende(a);
       });
     }
-    // auto's, koetsen en fietsers in een bocht
-    let i = 0, nk = 0, nf = 0;
+    // karren, koetsen, ruiters en wandelaars (ook in een bocht)
+    for (const sd of Object.values(this.soorten)) sd.n = 0;
     for (const a of this.autoData) {
       let x, z, hx, hz;
       if (a.bocht) {
         const b = a.bocht;
         b.u += a.v * dt / b.len;
-        if (b.u >= 1) {
-          // de nieuwe tak moet vrij zijn bij de ingang
-          a.tak = b.tak; a.dir = b.dir; a.p = KRUIS; a.bocht = null;
-        }
+        if (b.u >= 1) { a.tak = b.tak; a.dir = b.dir; a.p = KRUIS; a.bocht = null; }
       }
       if (a.bocht) {
         const b = a.bocht, u = clamp(b.u, 0, 1);
@@ -398,16 +403,13 @@ export class Wegen3D {
         const p = rijPunt(a.tak, s, a.dir, RIJSTROOK);
         x = p.x; z = p.z; hx = p.dx; hz = p.dz;
       }
-      // autoGeo, koetsGeo en fietsGeo: voorkant = +z
-      M4.compose(V3.set(x, Y_WEG, z), Q.setFromAxisAngle(YAS, Math.atan2(hx, hz)), S3.set(1, 1, 1));
-      if (a.soort === 'koets' && nk < this.koetsen.instanceMatrix.count) this.koetsen.setMatrixAt(nk++, M4);
-      else if (a.soort === 'fiets' && nf < this.fietsen.instanceMatrix.count) this.fietsen.setMatrixAt(nf++, M4);
-      else this.autos.setMatrixAt(i++, M4);
+      // voorkant = +z; wandelaars en paarden deinen een beetje mee met hun stappen
+      const sd = this.soorten[a.soort];
+      const stap = a.soort.startsWith('wandel') || a.soort === 'handkar' ? Math.abs(Math.sin(t * 7 + a.f)) * 0.03 : a.soort === 'ruiter' ? Math.abs(Math.sin(t * 6 + a.f)) * 0.025 : 0;
+      M4.compose(V3.set(x, Y_WEG + stap, z), Q.setFromAxisAngle(YAS, Math.atan2(hx, hz)), S3.set(1, 1, 1));
+      if (sd.n < sd.mesh.instanceMatrix.count) sd.mesh.setMatrixAt(sd.n++, M4);
     }
-    this.autos.count = i; this.koetsen.count = nk; this.fietsen.count = nf;
-    this.autos.instanceMatrix.needsUpdate = true;
-    this.koetsen.instanceMatrix.needsUpdate = true;
-    this.fietsen.instanceMatrix.needsUpdate = true;
+    for (const sd of Object.values(this.soorten)) { sd.mesh.count = sd.n; sd.mesh.instanceMatrix.needsUpdate = true; }
   }
 
   setData(aan) {
