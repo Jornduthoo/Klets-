@@ -84,7 +84,7 @@ function render() {
     h('header', { class: 'dash-kop' }, h('h1', { class: 'logo mini' }, METHODE),
       h('span', { class: 'dash-sub' }, `Thema ${THEMA.nr}: ${THEMA.naam} - ${stadNaam()} - week ${D.settings.huidigeWeek}`),
       themaKiezer(), weekKiezer(),
-      h('a', { class: 'btn klein', href: 'index.html?leerkracht=1', target: '_blank' }, 'Open de stad als leerkracht'),
+      h('a', { class: 'btn klein', href: 'index.html?leerkracht=1' }, 'Open de stad als leerkracht'),
       h('button', { class: 'btn klein zacht', type: 'button', onclick: () => { localStorage.removeItem('klets:v1:leerkrachtTot'); showPin(); } }, 'Afmelden')),
     nav, main));
   ({ overzicht, leerlingen, doelen, revanche, weken, labos, raid, codes, instellingen })[D.tab](main);
@@ -139,8 +139,8 @@ function overzicht(main) {
     h('section', { class: 'dash-blok' }, h('h2', {}, 'Snel'),
       h('div', { class: 'knoppen links' },
         h('label', { class: 'schakel' }, h('input', { type: 'checkbox', id: 'alles-open', checked: D.settings.allesOpen, onchange: (e) => saveSettings({ allesOpen: e.target.checked }) }), ' Alles open (ook latere weken)'),
-        h('a', { class: 'btn primair', href: 'digibord.html', target: '_blank' }, 'Start de eindbaas op het digibord'),
-        h('a', { class: 'btn', href: 'digibord.html?view=stad', target: '_blank', id: 'open-stad' }, 'Toon de klasstad op het digibord'),
+        h('a', { class: 'btn primair', href: 'digibord.html' }, 'Start de eindbaas op het digibord'),
+        h('a', { class: 'btn', href: 'digibord.html?view=stad', id: 'open-stad' }, 'Toon de klasstad op het digibord'),
         h('button', { class: 'btn', type: 'button', onclick: exportCSV }, 'Exporteer resultaten (CSV)'))),
     D.raid && ['lobby', 'actief'].includes(D.raid.status) ? h('p', { class: 'info-blok' }, `De eindbaas loopt: ${D.raid.naam} - ${D.raid.hp}/${D.raid.maxHp} HP.`) : null,
     h('section', { class: 'dash-blok' }, h('h2', {}, 'Zo werkt het'),
@@ -252,7 +252,7 @@ function revanche(main) {
         r.oefenen.length ? h('p', {}, h('b', {}, 'Nog niet behaald: '), r.oefenen.map(x => `${x.p.naam} (${Math.round(x.st.best * 100)} %)`).join(', ')) : null,
         r.nooit.length ? h('p', {}, h('b', {}, 'Nog niet geoefend: '), r.nooit.map(x => x.p.naam).join(', ')) : null,
         mis.length ? h('p', { class: 'knoppen links' }, h('small', {}, 'Oefen opnieuw: '), ...mis.slice(0, 3).flatMap(m => ROUTES.map(rt =>
-          h('a', { class: 'btn klein', href: `index.html?preview=${m.id}&route=${rt.id}`, target: '_blank', title: `${m.naam} als ${rt.naam}` }, `${m.naam.slice(0, 22)} ${rt.kort}`)))) : null);
+          h('a', { class: 'btn klein', href: `index.html?preview=${m.id}&route=${rt.id}`, title: `${m.naam} als ${rt.naam}` }, `${m.naam.slice(0, 22)} ${rt.kort}`)))) : null);
     }))
       : h('p', { class: 'info-blok' }, 'Niemand staat op de Revanchelijst voor deze keuze.')));
 }
@@ -275,7 +275,7 @@ function weken(main) {
     for (const m of deel) {
       const acties = h('td', {});
       if (m.kind === 'labo') acties.append(h('small', { class: 'tip' }, 'open de stad als leerkracht en ga het gebouw binnen'));
-      else if (m.sets) for (const r of ROUTES) acties.append(h('a', { class: 'btn klein', href: `index.html?preview=${m.id}&route=${r.id}`, target: '_blank', title: `Bekijk de missie zoals een ${r.naam}-reiziger` }, r.kort));
+      else if (m.sets) for (const r of ROUTES) acties.append(h('a', { class: 'btn klein', href: `index.html?preview=${m.id}&route=${r.id}`, title: `Bekijk de missie zoals een ${r.naam}-reiziger` }, r.kort));
       const codes = new Set();
       for (const items of Object.values(m.sets || {})) for (const it of items || []) for (const g of it.goals || []) codes.add(g);
       tb.append(h('tr', {},
@@ -316,7 +316,7 @@ function labos(main) {
     heeftVerhaal(THEMA) ? h('section', { class: 'dash-blok' }, h('h2', {}, `Het verhaal in ${stadNaam()}`),
       h('p', {}, 'De stad toont het verhaal vanzelf: in week 1 staat alles onder water en zit De Slijkkraak in de reien. Elk labo dat de klas haalt, laat het water zakken en een slijkarm verdwijnen. Week per week verandert er iets (zie de weekplanning). Wilt u een stap vooraf bekijken? Open een voorbeeld (er verandert niets aan de echte voortgang):'),
       h('div', { class: 'knoppenrij verhaal-voorbeelden' }, ...VERHAAL_STAPPEN.map(([code, naam]) =>
-        h('a', { class: 'btn klein', href: `index.html?leerkracht=1&verhaal=${code}`, target: '_blank', rel: 'noopener', title: naam }, code))),
+        h('a', { class: 'btn klein', href: `index.html?leerkracht=1&verhaal=${code}`, title: naam }, code))),
       h('p', {}, h('small', {}, 'Op het digibord: digibord.html?view=stad&verhaal=w3start. Tijd testen: &uur=22:30 (nacht) of &datum=2026-12-18.'))) : null,
     h('section', { class: 'dash-blok' }, h('h2', {}, 'Uitrusting van dit thema'),
       h('ul', {}, ...Object.entries(UITRUSTING).filter(([, v]) => v.thema).map(([id, v]) => h('li', {}, h('b', {}, v.naam), ` (${v.slot}) - ${v.uitleg || ''}`, h('small', {}, ' ' + id))))));
@@ -328,11 +328,11 @@ function raid(main) {
   add(main, h('section', { class: 'dash-blok' }, h('h2', {}, `Eindbaas: ${eb?.naam || 'nog geen'}`),
     h('p', {}, eb?.verhaal || ''),
     h('p', {}, 'Open het digibordscherm. Daar start u de eindbaas. Reizigers zien op hun laptop een knop "Doe mee". Elk juist antwoord spuit proper water op het monster. Het digibord toont nooit wie fout antwoordde, alleen de juiste antwoorden van de klas samen.'),
-    h('a', { class: 'btn primair groot', href: 'digibord.html', target: '_blank', id: 'open-digibord' }, 'Open het digibord'),
-    h('a', { class: 'btn groot', href: 'digibord.html?view=stad', target: '_blank' }, 'Digibord met de klasstad'),
+    h('a', { class: 'btn primair groot', href: 'digibord.html', id: 'open-digibord' }, 'Open het digibord'),
+    h('a', { class: 'btn groot', href: 'digibord.html?view=stad' }, 'Digibord met de klasstad'),
     D.raid ? h('p', { class: 'info-blok' }, `Laatste eindbaas: ${D.raid.naam} - status ${D.raid.status} - ${D.raid.hp}/${D.raid.maxHp} HP - ${D.raid.deelnemers || 0} deelnemers.`) : h('p', { class: 'tip' }, 'De eindbaas loopt nu niet.'),
     h('p', {}, 'Naast de raid op het digibord is er ook een individueel eindproefwerk in de app (week 5). Dat wordt automatisch verbeterd en komt in de doelenmatrix.'),
-    h('div', { class: 'knoppen links' }, ...ROUTES.map(r => h('a', { class: 'btn klein', href: `index.html?preview=eindbaas:${eb?.id}&route=${r.id}`, target: '_blank' }, `Bekijk het eindproefwerk (${r.naam})`))),
+    h('div', { class: 'knoppen links' }, ...ROUTES.map(r => h('a', { class: 'btn klein', href: `index.html?preview=eindbaas:${eb?.id}&route=${r.id}` }, `Bekijk het eindproefwerk (${r.naam})`))),
     h('p', { class: 'tip' }, 'Versie 1 werkt op een toestel (tabbladen in dezelfde browser). Voor echte laptops in de klas is de Supabase-koppeling nodig (zie README).')));
 }
 
