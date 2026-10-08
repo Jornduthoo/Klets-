@@ -29,6 +29,7 @@ const P = {
   storm: '<path d="M7 13h10a3.5 3.5 0 000-7 5 5 0 00-9.6-1.2A3.6 3.6 0 007 13z"/><path d="M13 15l-3 3h3l-2 3.5"/>',
   water: '<path d="M3 15c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 6 0"/><path d="M3 10c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 6 0"/>',
   labo: '<path d="M9 3h6M10.5 3v6.5L5.5 18a2.5 2.5 0 002.2 3.5h8.6A2.5 2.5 0 0018.5 18l-5-8.5V3"/><path d="M7.5 15h9"/>',
+  stem: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4.5 4.5 0 010 6M18 6.5a8 8 0 010 11"/>',
 };
 export function icoon(naam, klasse = 'ico') {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

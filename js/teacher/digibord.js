@@ -13,6 +13,7 @@ import { GIDSEN, MACHT, METHODE } from '../config.js';
 import { themaVoor } from '../../data/themas.js';
 import { volgWeer, weerTekst } from '../city/weer.js';
 import { waterTekst } from '../city/water.js';
+import { leesKnop } from '../core/stem.js';
 
 const store = createStore();
 const sync = createSync('klas');
@@ -124,10 +125,17 @@ async function toonStad() {
       h('b', {}, Math.round(z.helder * 100) + ' %'), h('small', {}, z.naam)))),
     h('div', { class: 'bs-wijken' }, ...m.wijken.map(w => h('span', { class: 'bs-wijk', style: { '--k': kleurVan(w.macht) } }, gidsBeeld(w.gids, { px: 26 }), `${w.naam}: ${w.gebouwd}`))),
     m.verhaal?.actief ? h('div', { class: 'bs-verhaal' }, h('small', {}, m.verhaal.preview ? 'Voorbeeld: ' + (m.verhaal.stapNaam || m.verhaal.stap) : `Wat gebeurt er in ${settings.klasNaam || THEMA.stad}?`),
-      h('b', {}, m.verhaal.tekst.titel), h('p', {}, m.verhaal.tekst.zin), m.verhaal.tekst.extra ? h('p', { class: 'bs-extra' }, m.verhaal.tekst.extra) : null) : null,
+      h('b', {}, m.verhaal.tekst.titel), h('p', {}, m.verhaal.tekst.zin), m.verhaal.tekst.extra ? h('p', { class: 'bs-extra' }, m.verhaal.tekst.extra) : null,
+      h('div', { class: 'bs-lees' }, leesKnop([m.verhaal.tekst.titel, m.verhaal.tekst.zin, m.verhaal.tekst.extra].filter(Boolean), { label: 'Lees voor' }),
+        weekVerhaal(settings) ? leesKnop(() => weekVerhaal(settings), { label: 'Lees het weekverhaal voor', titel: 'Het verhaal van de week (Vonk)' }) : null)) : null,
     VIEW.weer ? h('p', { class: 'bs-weer' }, VIEW.weer.bron === 'terugval' ? 'Geen live weer: de weerdienst is niet bereikbaar.' : 'Het echte weer in Brugge: ' + weerTekst(VIEW.weer)) : null);
 }
 const kleurVan = (m) => MACHT[m]?.kleur || '#888';
+/** Het verhaal van de huidige week (voor de Vonk-les op het digibord). */
+function weekVerhaal(settings) {
+  const w = (THEMA.weken || []).find(x => x.week === settings.huidigeWeek);
+  return w?.verhaal ? [`Week ${w.week}: ${w.titel}`, w.verhaal] : null;
+}
 function bouwLagen() {
   const box = $('#b-lagen'); if (!box) return; box.innerHTML = '';
   const lagen = [[null, 'Stad'], ['sterkte', 'Sterk en zwak'], ['wijken', 'Wijken']];

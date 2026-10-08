@@ -2,6 +2,7 @@
 //   { el, check() -> {goed, totaal, antwoord, juist}, reveal(result), focus() }
 // 'totaal' = aantal scoorbare eenheden (bv. 6 kaartjes sorteren = 6). 0 = niet gescoord.
 import { h, shuffle, normText, levenshtein, parseNumber, gcd, speak, playFragment, fmtNum } from '../core/util.js';
+import { leesKnop } from '../core/stem.js';
 
 const TYPES = {};
 export function renderItem(item, ctx) {
@@ -17,7 +18,7 @@ export const TYPE_NAMEN = {
 // ---------- gedeelde stukjes ----------
 function mediaKnoppen(item) {
   const box = h('div', { class: 'media' });
-  if (item.zeg) box.append(h('button', { class: 'btn luister', type: 'button', onclick: () => speak(item.zeg) }, h('span', { class: 'ico-luid', 'aria-hidden': 'true' }), 'Luister'));
+  if (item.zeg) box.append(h('button', { class: 'btn luister', type: 'button', onclick: () => speak(item.zeg, { nodig: true }) }, h('span', { class: 'ico-luid', 'aria-hidden': 'true' }), 'Luister'));
   if (item.geluid) box.append(h('button', { class: 'btn luister', type: 'button', onclick: () => playFragment(item.geluid) }, h('span', { class: 'ico-noot', 'aria-hidden': 'true' }), 'Speel het fragment'));
   return box.childNodes.length ? box : null;
 }
@@ -495,7 +496,7 @@ TYPES.tekst = (item) => {
     timerEl = h('div', { class: 'leestimer' }, h('strong', {}, 'Leestimer: '), b1, b2, disp, h('span', { class: 'tip' }, ` Doel: ${item.timer} minuten lezen in je eigen boek.`));
   }
   return {
-    el: h('div', {}, mediaKnoppen(item), timerEl, item.tekst ? h('button', { type: 'button', class: 'btn klein', onclick: () => speak(item.tekst.join(' ')) }, 'Lees de tekst voor') : null, body),
+    el: h('div', {}, mediaKnoppen(item), timerEl, item.tekst ? leesKnop(() => item.tekst, { label: 'Lees de tekst voor' }) : null, body),
     ready: () => true, knop: item.timer ? 'Verder' : 'Ik heb gelezen',
     check() { return { goed: 0, totaal: 0, antwoord: item.timer ? `${Math.round(minuten)} minuten gelezen` : 'gelezen', juist: '', minuten }; },
     reveal() {},

@@ -6,6 +6,7 @@
 // maak(api) geeft { update(dt), teken(g), score, klaar, eindTekst, tik?(x, y), toets?(key) } terug.
 // api: { W, H, toets(k) is ingedrukt?, wijzer {x, y, neer, actief}, klank(freq, duur, soort, luid), rng }
 import { h } from '../core/util.js';
+import { leesKnop, spreek, stopSpreken } from '../core/stem.js';
 import { K, tekst } from './teken.js';
 
 export const W = 960, H = 600;
@@ -93,6 +94,11 @@ export function openSpel(spel, opts = {}) {
         h('div', { class: 'confetti', 'aria-hidden': 'true' }, ...Array.from({ length: 28 }, (_, i) => h('i', { style: { '--i': i, '--x': `${(i * 37) % 100}%`, '--k': ['#f2c94c', '#e9578a', '#3aa6f3', '#6fae4a', '#e2643e'][i % 5] } }))));
       if (gv.beloning) laag.append(h('p', { class: 'spel-beloning' }, gv.beloning));
     }
+    // voorlezen: het feestje (bij 'altijd' vanzelf) en de uitleg van het spel
+    const feest = gv?.nieuw ? [`Geheim gevonden! ${gv.aantal} van de ${gv.totaal}.`, gv.beloning].filter(Boolean) : [];
+    const uitleg = [spel.titel, ...spel.uitleg.map(u => u.tekst)];
+    if (feest.length) spreek([...feest, ...uitleg], { vanzelf: true });
+    laag.append(h('div', { class: 'spel-lees' }, leesKnop([...feest, ...uitleg], { label: 'Lees de uitleg voor' })));
     laag.append(h('h3', { class: 'spel-titel' }, spel.titel),
       h('ul', { class: 'spel-uitleg' }, ...spel.uitleg.map(u => h('li', {}, u.toetsen ? toetsIcoon(u.toetsen) : icoonCanvas(u.teken), h('span', {}, u.tekst)))),
       best ? h('p', { class: 'spel-best' }, `Jouw beste score: ${best} ${spel.eenheid}`) : '',
@@ -106,6 +112,7 @@ export function openSpel(spel, opts = {}) {
   }
   function start() {
     if (fase === 'spel') return;
+    stopSpreken();
     fase = 'spel'; laag.hidden = true; laag.innerHTML = '';
     ingedrukt.clear();
     spelObj = spel.maak(api);
@@ -121,7 +128,8 @@ export function openSpel(spel, opts = {}) {
     try { record = !!(await opts.onScore?.(score)); } catch { record = false; }
     if (score > best) best = score;
     laag.hidden = false; laag.className = 'spel-laag einde'; laag.innerHTML = '';
-    laag.append(h('p', { class: 'spel-eindtekst' }, spelObj.eindTekst || 'Klaar!'),
+    laag.append(h('div', { class: 'spel-lees' }, leesKnop(() => [spelObj.eindTekst || 'Klaar!', `${score} ${spel.eenheid}.`, record && score > 0 ? 'Nieuw record!' : `Jouw beste score: ${best} ${spel.eenheid}.`])),
+      h('p', { class: 'spel-eindtekst' }, spelObj.eindTekst || 'Klaar!'),
       h('div', { class: 'spel-score' }, spel.scoreIcoon ? icoonCanvas(spel.scoreIcoon, 64) : null, h('b', {}, String(score)), h('span', {}, spel.eenheid)),
       record && score > 0 ? h('p', { class: 'spel-record' }, 'Nieuw record!') : h('p', { class: 'spel-best' }, `Jouw beste score: ${best} ${spel.eenheid}`),
       h('div', { class: 'spel-knoppen' }, h('button', { type: 'button', class: 'btn primair groot spel-opnieuw', onclick: () => start() }, 'Nog eens'),
@@ -142,7 +150,7 @@ export function openSpel(spel, opts = {}) {
   }
   function sluit() {
     if (fase === 'dicht') return;
-    fase = 'dicht';
+    fase = 'dicht'; stopSpreken();
     cancelAnimationFrame(raf);
     document.removeEventListener('keydown', onKey); document.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onBlur);
     ov.remove();

@@ -305,3 +305,19 @@ a { color: var(--info); }
 .staal-beeld small { font-size: .72em; }
 .staal-beeld img { width: 42px; height: 42px; }
 .creator-links .knoppen { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+
+/* ---------- voorlezen: luidsprekerknoppen en de keuze altijd / op vraag / uit ---------- */
+.lees-knop svg { flex: none; }
+.lees-knop.rond { min-width: 34px; min-height: 34px; padding: 0; justify-content: center; border-radius: 999px; }
+.lees-knop.spreekt { background: #ffe7a8; }
+.p-head .lees-knop, .m-head .lees-knop { color: var(--ink); }
+.lees-rij { display: flex; align-items: center; gap: 8px; }
+.lees-rij > :first-child { flex: 1; }
+body.voorlezen-uit .lees-knop { display: none !important; }
+.voorlees-keuzes { display: grid; gap: 8px; margin-bottom: 10px; }
+.voorlees-keuze { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: var(--rand); border-radius: var(--r); background: #fff; cursor: pointer; }
+.voorlees-keuze.sel { background: #fff3cf; }
+.voorlees-keuze span { display: grid; gap: 2px; }
+.voorlees-keuze input { margin-top: 4px; }
+@media (prefers-reduced-motion: no-preference) { .lees-knop.spreekt svg { animation: lees-puls 1s ease-in-out infinite; } }
+@keyframes lees-puls { 50% { opacity: .45; } }

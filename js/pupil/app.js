@@ -4,7 +4,8 @@
 // (zie data/themas.js). Het weer en het seizoen volgen het echte weer van Brugge (js/city/weer.js).
 import { createStore } from '../core/store.js';
 import { createSync } from '../core/sync.js';
-import { h, $, add, uid, clamp, speak, blip, toast, rng } from '../core/util.js';
+import { h, $, add, uid, clamp, blip, toast, rng } from '../core/util.js';
+import { leesKnop, spreek, stopSpreken, zetReiziger, voorleesStand, zetVoorleesStand, stemTekst, opStemmen, tekstVan as tekstLijst } from '../core/stem.js';
 import { MACHTEN, MACHT, ROUTE, ROUTES, GIDSEN, RANGEN, XP, DAGEN, METHODE } from '../config.js';
 import { THEMAS, THEMA as THEMA_LIJST, themaVoor } from '../../data/themas.js';
 import { themaCatalog, kiesSet, routeVoor, isOpen, rangVoor, doelStats, doelStatus, codeIndex, beloningVoor, normCode, uitrustingLijst } from '../core/model.js';
@@ -87,7 +88,7 @@ async function showLogin() {
   app.append(h('main', { class: 'login' },
     h('div', { class: 'login-kop' }, h('h1', { class: 'logo' }, METHODE), h('p', {}, `Thema ${THEMA.nr}: ${THEMA.naam} - de stad ${THEMA.stad}`)),
     h('section', { class: 'kaart-blok' },
-      h('h2', {}, 'Wie trekt er mee op expeditie?'),
+      h('div', { class: 'lees-rij' }, h('h2', {}, 'Wie trekt er mee op expeditie?'), leesKnop(() => ['Wie trekt er mee op expeditie?', S.pupils.length ? 'Klik op je kaartje.' : 'Nog geen reizigers op dit toestel. Maak je eigen reiziger.'], { label: '' })),
       kaarten.length ? h('div', { class: 'reizigers' }, ...kaarten) : h('p', { class: 'tip' }, 'Nog geen reizigers op dit toestel. Maak je eigen reiziger.'),
       h('button', { class: 'btn groot primair', type: 'button', onclick: showCreator }, 'Ik ben een nieuwe reiziger')),
     h('p', { class: 'login-voet' }, h('a', { href: 'leerkracht.html' }, 'Leerkracht'), ' - ', h('a', { href: 'digibord.html' }, 'Digibord'))));
@@ -157,7 +158,8 @@ function showCreator({ pupil = null, onKlaar = null } = {}) {
           h('button', { type: 'button', class: 'btn klein primair', id: 'verras', onclick: () => { Object.assign(look, willekeurigeLook(), { uitrusting: look.uitrusting }); paint(); tekenVakken(); } }, 'Verras me')),
         h('p', { class: 'tip' }, 'Sleep om je reiziger rond te draaien. Hij draait ook zelf.')),
       h('div', { class: 'creator-rechts' },
-        h('label', { class: 'lbl', for: 'naam' }, `Hoe heet je in ${THEMA.stad}?`), naam,
+        h('div', { class: 'lees-rij' }, h('label', { class: 'lbl', for: 'naam' }, `Hoe heet je in ${THEMA.stad}?`),
+          leesKnop(() => [`Hoe heet je in ${THEMA.stad}?`, 'Gebruik je voornaam of een bijnaam. Geen achternaam.', 'Kies hoe je reiziger eruitziet: ' + CREATOR_TABS.map(t => t.naam).join(', ') + '.', ...CREATOR_TABS.find(x => x.id === tab).keuzes.map(k => KEUZE_NAAM[k] || k)], { label: '' })), naam,
         h('p', { class: 'tip' }, 'Gebruik je voornaam of een bijnaam. Geen achternaam.'),
         tabsEl, vakken, fout,
         h('div', { class: 'knoppen' },
@@ -193,6 +195,7 @@ const LAGEN = [[null, 'Geen kaartlaag'], ['sterkte', 'Doelen: sterk en zwak'], [
 const WEER_ICO = { regen: 'regen', motregen: 'regen', buien: 'regen', sneeuw: 'sneeuw', mist: 'mist', storm: 'storm', zon: 'zon', bewolkt: 'wolk', grijs: 'wolk' };
 
 async function enterWorld() {
+  stopSpreken(); zetReiziger(S.pupil);
   S.pupils = await store.listPupils();
   document.body.classList.remove('in-aanmelden');
   const app = $('#app'); app.innerHTML = '';
@@ -251,9 +254,10 @@ function toonVerhaalBalk(forceer = false) {
     h('p', {}, v.tekst.zin), v.tekst.extra ? h('p', { class: 'vb-extra' }, v.tekst.extra) : null,
     h('div', { class: 'vb-knoppen' },
       !v.baasWeg ? h('button', { type: 'button', class: 'btn primair klein', onclick: () => { S.stad.focus('slijkkraak', 24); } }, 'Toon De Slijkkraak') : null,
-      h('button', { type: 'button', class: 'btn klein', onclick: () => speak(`${v.tekst.titel} ${v.tekst.zin}`) }, 'Lees voor'),
+      leesKnop([v.tekst.titel, v.tekst.zin, v.tekst.extra].filter(Boolean)),
       h('button', { type: 'button', class: 'btn klein zacht', onclick: () => { sluit(); openVerhaal(); } }, 'Het weekverhaal')));
   $('.stad-wrap')?.append(balk);
+  spreek([v.tekst.titel, v.tekst.zin, v.tekst.extra].filter(Boolean), { vanzelf: true });
   clearTimeout(S.verhaalT); S.verhaalT = setTimeout(sluit, 40000);
 }
 function tijdUitInstelling() { const dn = S.settings.dagNacht; return dn === 'dag' ? 'dag' : dn === 'nacht' ? 'nacht' : 'live'; }
@@ -324,6 +328,7 @@ function bouwTopbalk(top) {
     h('div', { class: 'top-rechts' },
       h('button', { class: 'weer-wijzer', type: 'button', id: 'weer-wijzer', 'aria-label': 'Het weer in Brugge', onclick: openWeer }, icoon('wolk', 'ico weer-ico')),
       h('button', { class: 'rond klein', type: 'button', id: 'btn-tijd', title: 'Dag en nacht', 'aria-label': 'Dag en nacht', onclick: wisselTijd }, icoon('cyclus')),
+      h('button', { class: 'rond klein', type: 'button', id: 'btn-voorlezen', title: 'Voorlezen', 'aria-label': 'Voorlezen', onclick: openVoorlezen }, icoon('stem')),
       h('button', { class: 'rond klein', type: 'button', id: 'btn-kwaliteit', title: 'Grafische kwaliteit', 'aria-label': 'Grafische kwaliteit', onclick: wisselKwaliteit }, icoon('kwaliteit')),
       h('button', { class: 'rond klein zacht', type: 'button', title: S.pupil.leerkracht ? 'Stop' : 'Afmelden', 'aria-label': S.pupil.leerkracht ? 'Stop' : 'Afmelden', onclick: logout }, icoon('uit'))));
 }
@@ -436,11 +441,12 @@ function kiesInStad(id) {
   if (String(id).startsWith('geheim:')) { sluitInfo(); return openGeheim(id.slice(7)); }
   toonInfo(id);
 }
-function sluitInfo() { const k = $('#info-kaart'); if (k) { k.hidden = true; k.innerHTML = ''; } S.stad?.selecteer(null); }
+function sluitInfo() { const k = $('#info-kaart'); if (k && !k.hidden) stopSpreken(); if (k) { k.hidden = true; k.innerHTML = ''; } S.stad?.selecteer(null); }
 
 async function toonInfo(id) {
   const k = $('#info-kaart'); k.innerHTML = ''; k.hidden = false;
   const kop = (titel, sub, kleur, beeld) => h('header', { class: 'ik-kop', style: { '--k': kleur || '#4c8fd6' } }, beeld || null, h('div', {}, h('small', {}, sub), h('h2', {}, titel)),
+    leesKnop(() => tekstLijst(k), { label: '' }),
     h('button', { type: 'button', class: 'rond klein zacht', 'aria-label': 'Sluiten', onclick: sluitInfo }, icoon('sluit')));
   if (id.startsWith('plek:')) {
     const g = (S.model.themaGebouwen || []).find(x => x.id === id);
@@ -534,12 +540,14 @@ function adviseurPraat(gid, tekst) {
   const g = GIDSEN[gid], el = $('#ballon');
   el.innerHTML = ''; el.hidden = false; el.style.setProperty('--k', MACHT[g.macht].kleur);
   el.append(h('div', { class: 'ballon-portret' }, gidsPortret(gid, 3)),
-    h('div', { class: 'ballon-tekst' }, h('b', {}, g.naam), h('p', {}, tekst),
+    h('div', { class: 'ballon-tekst' }, h('div', { class: 'lees-rij' }, h('b', {}, g.naam), leesKnop(tekst, { label: '' })), h('p', {}, tekst),
       h('div', { class: 'ballon-knoppen' },
         h('button', { type: 'button', class: 'btn primair klein', onclick: () => { el.hidden = true; kiesInStad('gids:' + gid); } }, 'Toon missies'),
         h('button', { type: 'button', class: 'btn klein', onclick: () => { el.hidden = true; S.stad.focus('gids:' + gid, 26); } }, 'Breng me erheen'),
         h('button', { type: 'button', class: 'btn klein zacht', 'aria-label': 'Sluiten', onclick: () => { el.hidden = true; } }, 'Later'))));
   document.querySelectorAll('.adviseur').forEach(a => a.classList.toggle('praat', a.id === 'adv-' + gid));
+  // een gids praat: bij 'altijd' vanzelf voorlezen (dezelfde zin maar één keer)
+  if (S.ballonGezegd !== tekst && !document.querySelector('#verhaal-balk')) { S.ballonGezegd = tekst; spreek(tekst, { vanzelf: true }); }
   clearTimeout(S.ballonT);
   S.ballonT = setTimeout(() => { el.hidden = true; document.querySelectorAll('.adviseur.praat').forEach(a => a.classList.remove('praat')); }, 14000);
 }
@@ -556,6 +564,7 @@ function showIntro() {
       h('li', {}, 'Het weer en het seizoen in de stad zijn het echte weer van Brugge.'),
       h('li', {}, 'Je hebt je eigen huis in de Reizigerswijk. Versier het met codes uit je Logboek.')),
     h('p', { class: 'tip' }, `Deze week: ${w.titel}.`));
+  spreek(THEMA.verhaal?.intro || '', { vanzelf: true });
   add(pan.foot, h('button', { class: 'btn groot primair', type: 'button', onclick: async () => { pan.close(); const p = await store.getPupil(S.pupil.id); if (p) { p.gezien = [...(p.gezien || []), 'intro-' + THEMA.id]; await store.savePupil(p); S.pupil = p; } setTimeout(() => adviseurPraat(), 800); } }, 'Aan de slag!'));
 }
 
@@ -631,12 +640,12 @@ function panel(titel, soort = '', { breed = false } = {}) {
   S.stad?.pause(true);
   const body = h('div', { class: 'p-body' }), foot = h('footer', { class: 'p-foot' });
   const sluit = h('button', { class: 'btn sluit', type: 'button', 'aria-label': 'Sluiten' }, 'Sluiten');
-  const pan = h('div', { class: 'paneel ' + soort + (breed ? ' breed' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': titel }, h('header', { class: 'p-head' }, h('h2', {}, titel), sluit), body, foot);
+  const pan = h('div', { class: 'paneel ' + soort + (breed ? ' breed' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': titel }, h('header', { class: 'p-head' }, h('h2', {}, titel), leesKnop(() => [titel, ...tekstLijst(body)], { titel: 'Lees dit scherm voor' }), sluit), body, foot);
   const ov = h('div', { class: 'overlay' }, pan);
   document.body.append(ov);
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', onKey);
-  function close() { ov.remove(); document.removeEventListener('keydown', onKey); if (!document.querySelector('.overlay')) { S.stad?.pause(false); $('#stad canvas')?.focus(); } }
+  function close() { stopSpreken(); ov.remove(); document.removeEventListener('keydown', onKey); if (!document.querySelector('.overlay')) { S.stad?.pause(false); $('#stad canvas')?.focus(); } }
   sluit.onclick = close;
   ov.addEventListener('pointerdown', (e) => { if (e.target === ov) close(); });
   return { body, foot, close, el: pan };
@@ -678,7 +687,7 @@ async function openGids(gid) {
     pan.body.innerHTML = '';
     const lijst = CATALOG.filter(m => m.gids === gid && m.week === week);
     const groet = lijst.length ? GROET[gid] : 'Deze week heb ik geen digitale missie voor jou. Kijk op het Missiebord.';
-    add(pan.body, h('div', { class: 'gids-zegt groot' }, gidsPortret(gid, 4), h('div', {}, h('p', {}, groet), h('small', {}, `${g.rol} - ${g.uitrusting}`), h('button', { class: 'btn klein', type: 'button', onclick: () => speak(groet) }, 'Lees voor'))),
+    add(pan.body, h('div', { class: 'gids-zegt groot' }, gidsPortret(gid, 4), h('div', {}, h('p', {}, groet), h('small', {}, `${g.rol} - ${g.uitrusting}`), leesKnop(groet))),
       weekTabs(week, (w) => { week = w; draw(); }),
       h('p', { class: 'week-titel' }, `Week ${week}: ${weekVan(week).titel}`));
     const ul = h('ul', { class: 'missie-lijst' });
@@ -687,6 +696,7 @@ async function openGids(gid) {
     add(pan.body, ul);
   }
   draw();
+  spreek(CATALOG.some(m => m.gids === gid && m.week === week) ? GROET[gid] : 'Deze week heb ik geen digitale missie voor jou. Kijk op het Missiebord.', { vanzelf: true });
 }
 const GROET = {
   tella: 'Hallo reiziger! Ik ben Tella. In mijn labo onderzoeken we alles wat we niet snappen. Kies een missie.',
@@ -804,7 +814,7 @@ async function openWeer() {
       rij('Neerslag', `${w.neerslag ?? 0} mm`), rij('Bewolking', `${Math.round(w.wolken)} %`),
       rij('Seizoen', w.seizoen), rij('Bron', bron))),
     h('p', { class: 'tip' }, 'In december staat de kerstmarkt op de Markt. In de herfst worden de bladeren bruin, in de winter liggen de bomen kaal onder de sneeuw en in de lente bloeien ze.'));
-  add(pan.foot, h('button', { class: 'btn', type: 'button', onclick: () => speak(weerTekst(w)) }, 'Lees voor'));
+  add(pan.foot, leesKnop(() => weerTekst(w), { klein: false }));
   function rij(a, b) { return h('tr', {}, h('th', {}, a), h('td', {}, b)); }
 }
 
@@ -938,12 +948,35 @@ function openPoort() {
     h('p', { class: 'tip' }, 'Vaganten waren middeleeuwse rondtrekkende studenten: ze trokken van stad naar stad om te leren.'));
   void THEMA_LIJST;
 }
+/** Voorlezen: altijd, op vraag of uit (per reiziger bewaard), en welke stem er klinkt. */
+function openVoorlezen() {
+  const pan = panel('Voorlezen', 'voorlezen');
+  const KEUZES = [['altijd', 'Altijd', 'Filmpjes, gidsen en het verhaal lezen vanzelf voor. Overal staat ook een luidspreker.'],
+    ['opvraag', 'Op vraag', 'Alleen als je op de luidspreker klikt.'], ['uit', 'Uit', 'Geen stem en geen luidsprekers.']];
+  const info = h('p', { class: 'tip stem-info', id: 'stem-info' }, stemTekst());
+  const teken = () => {
+    lijst.innerHTML = '';
+    for (const [id, naam, uitleg] of KEUZES) {
+      const aan = voorleesStand() === id;
+      lijst.append(h('label', { class: 'voorlees-keuze' + (aan ? ' sel' : '') },
+        h('input', { type: 'radio', name: 'voorlezen', value: id, checked: aan, onchange: () => { zetVoorleesStand(id); teken(); if (id !== 'uit') spreek(naam + '. ' + uitleg); } }),
+        h('span', {}, h('b', {}, naam), h('small', {}, uitleg))));
+    }
+  };
+  const lijst = h('div', { class: 'voorlees-keuzes', role: 'radiogroup', 'aria-label': 'Voorlezen' });
+  teken();
+  add(pan.body, lijst, info);
+  const af = opStemmen(() => { info.textContent = stemTekst(); });
+  setTimeout(() => { info.textContent = stemTekst(); }, 600);
+  add(pan.foot, h('button', { class: 'btn primair', type: 'button', onclick: () => { af(); pan.close(); } }, 'Klaar'));
+}
+
 function openVerhaal() {
   const w = weekVan(S.settings.huidigeWeek);
   const pan = panel('Het verhaal van de week', 'trein');
   add(pan.body, h('p', { class: 'week-titel' }, `Week ${w.week}: ${w.titel}`), h('div', { class: 'verhaal' }, h('p', {}, w.verhaal || THEMA.verhaal?.intro || '')),
     w.stad ? h('p', { class: 'tip' }, 'In de stad zie je dit: ' + w.stad) : null);
-  add(pan.foot, h('button', { class: 'btn', type: 'button', onclick: () => speak(w.verhaal || '') }, 'Lees voor'),
+  add(pan.foot, leesKnop(() => [`Week ${w.week}: ${w.titel}`, w.verhaal || THEMA.verhaal?.intro || ''], { klein: false }),
     h('button', { class: 'btn primair', type: 'button', onclick: () => { pan.close(); openWeekoverzicht(S.settings.huidigeWeek); } }, 'Mijn week'));
 }
 

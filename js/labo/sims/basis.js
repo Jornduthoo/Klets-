@@ -2,7 +2,8 @@
 // Een simulatie krijgt een lijst opdrachten (per route) uit het themabestand. Per opdracht tekent ze haar
 // eigen beeld en kijkt ze zelf na of de opdracht gelukt is. Elke gelukte opdracht levert een resultaat
 // {id, goals, goed, totaal} op, net als een gewone oefening, zodat de doelen in het dashboard komen.
-import { h, speak } from '../../core/util.js';
+import { h } from '../../core/util.js';
+import { leesKnop } from '../../core/stem.js';
 
 /**
  * Bouw een simulatie met een opdrachtenlijst.
@@ -15,7 +16,7 @@ export function simKader({ naam, opdrachten = [], maker, onKlaar }) {
   const melding = h('p', { class: 'sim-melding' });
   const host = h('div', { class: 'sim-host' });
   const balk = h('div', { class: 'film-balk' }, ...opdrachten.map(() => h('span', { class: 'stip' })));
-  const lees = h('button', { type: 'button', class: 'btn klein', onclick: () => speak(kop.textContent) }, 'Lees voor');
+  const lees = leesKnop(() => kop.textContent);
   const over = h('button', { type: 'button', class: 'btn klein zacht', onclick: () => volgende(0) }, 'Sla over');
   const el = h('div', { class: 'sim' }, h('h3', {}, naam || 'Proefopstelling'),
     h('div', { class: 'sim-rij' }, kop, lees, over), host, melding, balk);

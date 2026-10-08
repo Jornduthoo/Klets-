@@ -1,7 +1,8 @@
 // De filmpjes van de labo's: korte animaties die uit de themagegevens worden gespeeld (geen video's van
 // internet). Elke scene heeft een duur, een beeld (lijst elementen, zie tekenen.js), een onderschrift en
 // wat de gids zegt. Met spelen/pauzeren, vorige en volgende scene en een voorleesknop (Nederlandse stem).
-import { h, speak } from '../core/util.js';
+import { h } from '../core/util.js';
+import { leesKnop, spreek, stopSpreken, leestVanzelf } from '../core/stem.js';
 import { maakCanvas, Tekenaar, tekenBeeld, label } from './tekenen.js';
 import { gidsBeeld } from '../figuren/portret.js';
 import { GIDSEN } from '../config.js';
@@ -22,7 +23,17 @@ export function maakFilmpje(film, opts = {}) {
   const gidsVak = h('div', { class: 'film-gids' });
   const balk = h('div', { class: 'film-balk' }, ...scenes.map(() => h('span', { class: 'stip' })));
   const spelen = h('button', { type: 'button', class: 'btn primair', onclick: () => zetSpelen(!speelt) }, 'Pauzeer');
-  const lees = h('button', { type: 'button', class: 'btn', onclick: () => { const s = scenes[i]; if (s) speak(`${s.zegt || ''} ${s.tekst || ''}`); } }, 'Lees voor');
+  // wat er bij een scene voorgelezen wordt: wat de gids zegt en het onderschrift (twee stukken, elk met een eigen opname)
+  const sceneTekst = (s) => [s?.zegt, s?.tekst].filter(Boolean);
+  const lees = leesKnop(() => sceneTekst(scenes[i]), { klein: false });
+  // vanzelf voorlezen (stand 'altijd'): de scene wacht tot de zin uit is
+  let praat = false, praatScene = -1;
+  function vertel() {
+    if (!speelt || klaar || !leestVanzelf() || praatScene === i) return;
+    praatScene = i; praat = true;
+    const k = i;
+    spreek(sceneTekst(scenes[k]), { vanzelf: true }).finally(() => { if (praatScene === k) praat = false; });
+  }
   const vorige = h('button', { type: 'button', class: 'btn klein', onclick: () => naar(i - 1) }, 'Vorige');
   const volgende = h('button', { type: 'button', class: 'btn klein', onclick: () => naar(i + 1) }, 'Volgende');
   const el = h('div', { class: 'film' },
@@ -42,11 +53,14 @@ export function maakFilmpje(film, opts = {}) {
   }
   function naar(k) {
     if (k < 0 || k >= scenes.length) return;
-    i = k; t = 0; zetScene(); teken();
+    stopSpreken(); praat = false; praatScene = -1;
+    i = k; t = 0; zetScene(); teken(); vertel();
   }
   function zetSpelen(aan) {
     speelt = aan; spelen.textContent = aan ? 'Pauzeer' : 'Spelen';
+    if (!aan) { stopSpreken(); praat = false; praatScene = -1; }
     if (aan && klaar) { klaar = false; i = 0; t = 0; zetScene(); }
+    if (aan) vertel();
     laatst = performance.now();
   }
   function teken() {
@@ -63,8 +77,8 @@ export function maakFilmpje(film, opts = {}) {
     if (speelt && !klaar) {
       t += dt;
       const s = scenes[i];
-      if (s && t > (s.duur || 7)) {
-        if (i < scenes.length - 1) { i++; t = 0; zetScene(); }
+      if (s && t > (s.duur || 7) && !praat) {
+        if (i < scenes.length - 1) { i++; t = 0; zetScene(); vertel(); }
         else { klaar = true; speelt = false; spelen.textContent = 'Opnieuw'; opts.onKlaar?.(); }
       }
     }
@@ -73,10 +87,11 @@ export function maakFilmpje(film, opts = {}) {
   zetScene();
   laatst = performance.now();
   raf = requestAnimationFrame(lus);
+  vertel();
 
   return {
     el,
-    stop() { cancelAnimationFrame(raf); },
+    stop() { cancelAnimationFrame(raf); stopSpreken(); },
     get klaar() { return klaar; },
   };
 }

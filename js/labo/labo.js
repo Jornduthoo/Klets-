@@ -6,6 +6,7 @@
 // Alles wat je doet, wordt bewaard als poging (attempt), zodat de doelen in het dashboard komen en het
 // water van de stad helderder wordt. Het labo zelf is data: zie data/thema-waterwereld.js.
 import { h, uid, toast } from '../core/util.js';
+import { leesKnop, spreek, stopSpreken, tekstVan } from '../core/stem.js';
 
 /** Zoals append, maar lege stukken (null) worden overgeslagen. */
 function toon(el, ...kids) { for (const k of kids) if (k != null && k !== false) el.append(k); }
@@ -43,9 +44,9 @@ export async function openLabo(opts) {
   const paneel = h('div', { class: 'paneel labo', role: 'dialog', 'aria-modal': 'true', 'aria-label': gebouw.naam }, kop, body);
   const overlay = h('div', { class: 'overlay labo-overlay' }, paneel);
   document.body.append(overlay);
-  let actief = null;
+  let actief = null, gezegd = null;
   let resolve; const done = new Promise(r => resolve = r);
-  const close = () => { actief?.stop?.(); overlay.remove(); document.removeEventListener('keydown', onKey); opts.onKlaar?.(); resolve(); };
+  const close = () => { stopSpreken(); actief?.stop?.(); overlay.remove(); document.removeEventListener('keydown', onKey); opts.onKlaar?.(); resolve(); };
   sluit.onclick = close;
   const onKey = (e) => { if (e.key === 'Escape') { if (actief) toonKamer(); else close(); } };
   document.addEventListener('keydown', onKey);
@@ -58,6 +59,7 @@ export async function openLabo(opts) {
         h('small', {}, `${gebouw.naam} - week ${labo.week}`),
         h('h2', {}, onderTitel || labo.naam)),
       terug ? h('button', { class: 'btn klein', type: 'button', onclick: toonKamer }, 'Terug naar de werkbanken') : null,
+      leesKnop(() => [onderTitel || labo.naam, ...tekstVan(body)], { titel: 'Lees dit scherm voor' }),
       sluit);
   }
 
@@ -66,6 +68,7 @@ export async function openLabo(opts) {
   }
 
   function toonKamer() {
+    stopSpreken();
     actief?.stop?.();
     zetKop(null, false);
     body.innerHTML = '';
@@ -84,6 +87,7 @@ export async function openLabo(opts) {
       h('div', { class: 'gids-zegt' }, h('p', {}, `${gids.naam || 'De gids'}: "${labo.uitleg || gebouw.uitleg}"`)),
       keuze, kamer.el,
       h('p', { class: 'tip' }, labo.herstel?.tekst ? `Als de klas dit labo haalt: ${labo.herstel.tekst}` : ''));
+    if (gezegd !== labo.id) { gezegd = labo.id; spreek(labo.uitleg || gebouw.uitleg || '', { vanzelf: true }); }
   }
 
   function opener(id) {

@@ -203,6 +203,7 @@ Twee weergaven (knop *Toon de stad* / *Toon De Slijkkraak*, of rechtstreeks `dig
   js/city/verhaal.js         het verhaal in de stad als zuivere logica: van labo's, week, codes en eindbaas naar hoogwater, slijkarmen en wat er per week verandert; ?verhaal-voorbeelden
   js/city/verhaal3d.js       het verhaal in 3D: hoogwater (shader met masker), afval, zandzakjes, roeiboten en de weekdingen (weerstation, masten, riet, sluis, bouwplaatsen, feest)
   js/city/slijkkraak3d.js    De Slijkkraak: kop met ogen die knipperen, ademen, wiegen, armen over bruggen en sluis, druppels en bellen; raid en verslaan
+  js/core/stem.js            voorlezen: opnames uit audio/stem, anders de beste Vlaamse browserstem; knoppen, zinnen, altijd/op vraag/uit
   js/city/tijd.js            de echte tijd in Brugge (Europe/Brussels) en de stand van de zon en de maan; ?uur= en ?datum=
   js/city/stad.js            kiest 3D of 2D, bewaart de kwaliteitskeuze
   js/figuren/uiterlijk.js    keuzes voor het uiterlijk (vier tabbladen), kleuren, willekeurigeLook()
@@ -327,6 +328,18 @@ het dashboard, het digibord en de eindbaas lezen alles uit dit object.
 - Dag en nacht volgen standaard de echte klok van Brugge en de stand van de zon (zonsopgang en -ondergang per seizoen, schemering, maan en sterren, verlichte ramen en lantaarns).
   De leerkracht kan dat in het dashboard of op het digibord vastzetten op dag, avond of nacht.
 - Wordt de app ingebed met een strenge Content-Security-Policy, zet dan `connect-src https://api.open-meteo.com` erbij, anders is er geen live weer.
+
+## Voorlezen met een Vlaamse stem
+- Elke tekst die een reiziger leest, heeft een luidspreker: de gidsen en hun ballon, de verhaalbalk en het weekverhaal, het Missiebord,
+  elke missie (vraag en antwoorden, en de kop leest het hele scherm), de labo's (kop, filmpje, proefopstelling, check), de Codekluis,
+  het weer, de infokaartjes in de stad, de spelletjes van de geheimen (feestje en uitleg), het aanmelden en de reizigermaker.
+- Per reiziger in te stellen (luidspreker rechtsboven): **altijd** (filmpjes, gidsen en het verhaal lezen vanzelf voor), **op vraag** of **uit**.
+  Standaard: *altijd* voor de Kompasroute, anders *op vraag*. Een dictee (`Luister`) spreekt altijd. Sluiten of weggaan stopt de stem.
+- Alles loopt via `js/core/stem.js`. Eerst een opname: `audio/stem/manifest.json` noemt de clips (`{ "clips": { "<sleutel>": "<sleutel>.mp3" } }`),
+  de sleutel is FNV-1a (32 bit, hex) van de tekst met samengevoegde spaties. `node tools/stemteksten.mjs` geeft alle vaste teksten als JSON
+  `[{ key, text, bron }]`, om ze vooraf in te spreken met een Vlaamse stem. Geen opname: de stem van de browser, de beste eerst
+  (Edge Arnaud of Dena Natural, dan elke nl-BE-stem, dan nl-NL), rustig (tempo 0,85, toon 0,95), zin per zin met een korte pauze.
+- Het dashboard (Instellingen) toont welke stem klinkt; het digibord heeft een *Lees voor* bij het verhaal en het weekverhaal (Vonk).
 
 ## Licenties
 - **three.js** r170 (`vendor/three.module.min.js`, ongewijzigd uit `three@0.170.0`, bestand `build/three.module.min.js`),

@@ -1,5 +1,6 @@
 // Missie-engine: toont items na elkaar, verbetert automatisch en bewaart het resultaat per doelcode.
-import { h, add, uid, rng, speak, blip, toast } from '../core/util.js';
+import { h, add, uid, rng, blip, toast } from '../core/util.js';
+import { leesKnop, spreek, stopSpreken, tekstVan } from '../core/stem.js';
 import { renderItem } from './types.js';
 import { kiesSet, xpVoorPoging, doelStatus } from '../core/model.js';
 import { ROUTE, GIDSEN, BEHAALD_GRENS } from '../config.js';
@@ -33,13 +34,14 @@ export function runMission(opts) {
   const paneel = h('div', { class: 'paneel missie', role: 'dialog', 'aria-modal': 'true', 'aria-label': missie.naam },
     h('header', { class: 'm-head' }, gidsPortret(missie.gids, 3),
       h('div', { class: 'm-titel' }, h('small', {}, `${gids.naam} - week ${missie.week}, ${missie.dag}`), h('h2', {}, missie.naam)),
-      routeBadge, mode === 'voorbeeld' ? h('span', { class: 'route-badge voorbeeld' }, 'Voorbeeld') : null, sluit),
+      routeBadge, mode === 'voorbeeld' ? h('span', { class: 'route-badge voorbeeld' }, 'Voorbeeld') : null,
+      leesKnop(() => [...tekstVan(body), ...tekstVan(fb)], { titel: 'Lees dit scherm voor' }), sluit),
     prog, body, fb, h('footer', { class: 'm-foot' }, btn));
   const overlay = h('div', { class: 'overlay' }, paneel);
   document.body.append(overlay);
 
   let resolveDone; const done = new Promise(res => resolveDone = res);
-  const close = (result = null) => { overlay.remove(); document.removeEventListener('keydown', onKey); opts.onClose?.(result); resolveDone(result); };
+  const close = (result = null) => { stopSpreken(); overlay.remove(); document.removeEventListener('keydown', onKey); opts.onClose?.(result); resolveDone(result); };
   sluit.onclick = () => close(null);
   const onKey = (e) => {
     if (e.key === 'Escape') close(null);
@@ -60,9 +62,11 @@ export function runMission(opts) {
     h('p', { class: 'tip' }, `${items.length} opdrachten. Je kan altijd 'Lees voor' gebruiken.`),
     route !== routeWens ? h('p', { class: 'tip' }, `Deze missie volgt voor jou de route ${ROUTE[route].naam}.`) : null);
   prog.append(...items.map(() => h('span', { class: 'stip' })));
+  spreek(missie.intro || `Welkom, reiziger. Klaar voor '${missie.naam}'?`, { vanzelf: true });
   btn.onclick = next;
 
   function next() {
+    stopSpreken();
     idx++; checked = false; fb.textContent = ''; fb.className = 'm-feedback';
     [...prog.children].forEach((s, i) => s.classList.toggle('nu', i === idx));
     if (idx >= items.length) return finish();
@@ -70,7 +74,7 @@ export function runMission(opts) {
     body.innerHTML = '';
     current = renderItem(item, { rand: r, saveGallery: (g) => saveGallery(g) });
     const vraag = h('h3', { class: 'vraag' }, item.vraag);
-    add(body, h('div', { class: 'vraag-rij' }, vraag, h('button', { class: 'btn klein lees', type: 'button', onclick: () => speak(item.vraag + (item.opties ? '. ' + item.opties.join('. ') : '')) }, 'Lees voor')),
+    add(body, h('div', { class: 'vraag-rij' }, vraag, leesKnop(() => [item.vraag, ...[].concat(item.context || []), ...(item.opties || []).map(String)], { klasse: 'lees' })),
       item.context ? h('div', { class: 'context' }, ...[].concat(item.context).map(t => h('p', {}, t))) : null,
       current.el);
     btn.textContent = current.knop || 'Controleer'; btn.onclick = check;

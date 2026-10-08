@@ -356,3 +356,4 @@ body.in-aanmelden { background: linear-gradient(180deg, #6db7f0 0%, #b9def8 46%,
 .spel-knoppen { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .spel-laag.einde { background: rgba(255, 246, 227, .55); }
 @media (prefers-reduced-motion: reduce) { .confetti { display: none; } .spel-feest, .spel-record, .geheim-chip { animation: none; } }
+.spel-lees { position: absolute; top: 12px; right: 12px; z-index: 2; }

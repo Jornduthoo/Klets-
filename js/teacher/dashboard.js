@@ -9,6 +9,7 @@ import { THEMAS, themaVoor } from '../../data/themas.js';
 import { themaCatalog, doelStats, doelStatus, rangVoor, klasXP, codeIndex, beloningVoor, machtVanCode, klasstadGebouwen, uitrustingLijst } from '../core/model.js';
 import { waterStand, waterTekst } from '../city/water.js';
 import { VERHAAL_STAPPEN, heeftVerhaal } from '../city/verhaal.js';
+import { leesKnop, stemInfo, stemTekst, opStemmen } from '../core/stem.js';
 import { avatarBeeld } from '../figuren/portret.js';
 import { AVATAR_OPTIES, willekeurigeLook } from '../figuren/uiterlijk.js';
 
@@ -264,7 +265,7 @@ function weken(main) {
     h('div', { class: 'week-tabs' }, ...THEMA.weken.map(x => h('button', { type: 'button', class: 'tab' + (x.week === week ? ' sel' : ''), onclick: () => { D.week = x.week; render(); } }, `Week ${x.week}`))),
     h('div', { class: 'knoppen links' },
       h('button', { class: 'btn klein' + (D.settings.huidigeWeek === week ? ' sel' : ''), type: 'button', onclick: () => saveSettings({ huidigeWeek: week }) }, 'Zet deze week als huidige week')),
-    w.verhaal ? h('details', {}, h('summary', {}, 'Weekverhaal'), h('p', {}, w.verhaal)) : null,
+    w.verhaal ? h('details', {}, h('summary', {}, 'Weekverhaal'), h('p', {}, w.verhaal), leesKnop([`Week ${week}: ${w.titel}`, w.verhaal], { label: 'Lees het weekverhaal voor' })) : null,
     w.stad ? h('details', {}, h('summary', {}, 'Wat gebeurt er in de stad?'), h('p', {}, w.stad)) : null);
   const lijst = CATALOG.filter(m => m.week === week);
   for (const dag of [...DAGEN, null]) {
@@ -356,7 +357,18 @@ function instellingen(main) {
     const f = file.files?.[0]; if (!f) return;
     try { await store.importAll(JSON.parse(await f.text()), { merge: true }); toast('Samengevoegd.'); sync.publish('klas:update', {}); reload(); } catch (e) { toast(e.message); }
   });
+  const stemRegel = h('p', { id: 'stem-tekst' }), stemHint = h('p', { class: 'tip', id: 'stem-hint' });
+  const zetStem = () => {
+    const i = stemInfo();
+    stemRegel.textContent = stemTekst();
+    stemHint.textContent = i.vlaams ? '' : 'De vaste teksten (missies, labo\'s, filmpjes, gidsen, het verhaal) zijn opgenomen met een Vlaamse stem. Voor andere teksten, zoals namen, gebruikt de browser zijn eigen stem. Op dit toestel is dat geen Vlaamse stem, dus die kan Nederlands klinken.';
+    stemHint.hidden = !stemHint.textContent;
+  };
+  zetStem(); opStemmen(zetStem); setTimeout(zetStem, 800);
   add(main,
+    h('section', { class: 'dash-blok' }, h('h2', {}, 'Voorlezen'),
+      h('p', {}, 'Elke tekst die een reiziger leest, heeft een luidspreker. Reizigers kiezen zelf (luidspreker rechtsboven in de stad): altijd, op vraag of uit. Voor de Kompasroute staat het standaard op altijd: filmpjes, gidsen en het verhaal lezen vanzelf voor.'),
+      stemRegel, stemHint, leesKnop(`Dag reizigers. Welkom in ${THEMA.stad}. Wie helpt het water weer proper te maken?`, { label: 'Probeer de stem' })),
     h('section', { class: 'dash-blok' }, h('h2', {}, 'Klas'),
       h('div', { class: 'form-grid' },
         h('label', {}, 'Thema'), h('select', { id: 'set-thema2', onchange: (e) => saveSettings({ huidigThema: e.target.value }) }, ...THEMAS.map(t => h('option', { value: t.id, selected: s.huidigThema === t.id, disabled: !t.data }, `${t.nr}. ${t.naam} - ${t.stad}${t.data ? '' : ' (binnenkort)'}`))),

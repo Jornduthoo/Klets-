@@ -1,4 +1,5 @@
 // Kleine hulpfuncties zonder afhankelijkheden.
+import { spreek } from './stem.js';
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -99,21 +100,8 @@ export function fmtNum(n) {
   return Number(n).toLocaleString('nl-BE').replace(/ | |\./g, ' ');
 }
 
-/** Voorlezen met de ingebouwde spraak van de browser (geen netwerk). */
-export function speak(text, { rate = 0.9 } = {}) {
-  try {
-    if (!('speechSynthesis' in window)) return false;
-    const u = new SpeechSynthesisUtterance(String(text));
-    const voices = speechSynthesis.getVoices();
-    const v = voices.find(v => /nl[-_]BE/i.test(v.lang)) || voices.find(v => /^nl/i.test(v.lang));
-    if (v) u.voice = v;
-    u.lang = v ? v.lang : 'nl-BE';
-    u.rate = rate;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
-    return true;
-  } catch { return false; }
-}
+/** Voorlezen met een rustige Vlaamse stem (opnames of de stem van de browser, zie stem.js). */
+export function speak(text, opts = {}) { spreek(text, opts); return true; }
 
 /** Korte klankjes via WebAudio (geen bestanden nodig). */
 let actx = null;
