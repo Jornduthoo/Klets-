@@ -738,35 +738,3 @@ export class Waterval {
   }
 }
 
-/** Stralen van de fontein op de Markt: ze spuiten hoger als het water properder is. */
-export class Fontein {
-  constructor(stad, { x = 0, z = 4.3 } = {}) {
-    this.stad = stad;
-    const mat = new THREE.MeshLambertMaterial({ color: '#cdeeff', transparent: true, opacity: 0.8, depthWrite: false });
-    this.straal = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.12, 1, 7).translate(0, 0.5, 0), mat, 90);
-    this.straal.count = 0;
-    this.pos = { x, z };
-    this.data = [];
-    const r = rng('fontein');
-    for (let i = 0; i < 90; i++) {
-      const ring = i < 10 ? 0 : i < 40 ? 1 : 2;
-      this.data.push({ a: r() * TAU, ring, f: r() * 9, r: ring === 0 ? 0 : ring === 1 ? 0.55 : 1.5 });
-    }
-    stad.scene.add(this.straal);
-  }
-  tick(dt, t, aan = 0) {
-    let i = 0;
-    for (const p of this.data) {
-      const kracht = aan * (0.7 + 0.3 * Math.sin(t * 2.2 + p.f));
-      if (kracht < 0.05) continue;
-      const hoog = (p.ring === 0 ? 2.6 : p.ring === 1 ? 1.1 : 0.6) * kracht;
-      const y = (p.ring === 0 ? 2.3 : p.ring === 1 ? 1.65 : 0.4);
-      M4.compose(V3.set(this.pos.x + Math.cos(p.a) * p.r, y, this.pos.z + Math.sin(p.a) * p.r), Q.setFromAxisAngle(new THREE.Vector3(Math.cos(p.a), 0, Math.sin(p.a)), p.ring === 0 ? 0 : 0.5),
-        S3.set(1, Math.max(0.05, hoog), 1));
-      this.straal.setMatrixAt(i++, M4);
-    }
-    this.straal.count = i;
-    this.straal.instanceMatrix.needsUpdate = true;
-    void dt;
-  }
-}

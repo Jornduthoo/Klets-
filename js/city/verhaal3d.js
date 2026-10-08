@@ -489,7 +489,7 @@ export class Verhaal3D {
     fs.cil(1.8, 1.8, 0.04, 0, 0, 0, '#5c4a27', 20);
     for (let i = 0; i < 10; i++) { const a = i / 10 * TAU; fs.ellips(0.3, 0.07, 0.24, Math.cos(a) * 1.25, 0.03, Math.sin(a) * 1.25, i % 2 ? '#6b5730' : '#7b8a3a', 8); }
     fs.cil(0.06, 0.06, 0.24, 0.9, 0.05, -0.5, '#9fd6e8', 8, [Math.PI / 2, 0, 0.7]);
-    const fsm = this._mesh(fs); fsm.position.set(PLEIN.klasmeter.x, 0.37, PLEIN.klasmeter.z); fsm.castShadow = false;
+    const fsm = this._mesh(fs); fsm.position.set(PLEIN.klasmeter.x, 0.26, PLEIN.klasmeter.z); fsm.castShadow = false;
     this.fonteinSlijk = this._prop(fsm, 'aan');
   }
 

@@ -159,6 +159,8 @@ export function verhaalStand(inv, water, thema) {
     if (w < 5 && raid(w)) { armen[zone] = 0; continue; }
     armen[zone] = clamp01(1 - 0.6 * helder(zone));
   }
+  // de fontein spuit weer (labo van week 5 gehaald of code HELDER): dan zit er geen arm meer in de schaal
+  if (helder('fontein') >= 1 || inv.codes?.has?.('HELDER')) armen.fontein = 0;
   // week 5: grijze slijkarmen met plastic in de reien rond de Markt
   armen.markt = !baas && week >= 5 ? clamp01(1 - 0.55 * lab('waterfilter').deel) : 0;
 

@@ -11,12 +11,13 @@ import {
   WATERS, PLEKKEN, MOLENS, inWater, KADE, hoeken, STATION, WATER_Y, waterVeelhoek, waterMidden, waterhuizen, MARKT_HUIZEN, TERRASSEN,
   SLUISDEUREN, oeverPunten, VEST_R, POORTEN, MUUR_R, WAL_R0, WAL_R1,
 } from './layout.js';
-import { Water3D, Waterval, Fontein } from './water3d.js';
+import { Water3D, Waterval } from './water3d.js';
+import { Fontein, fonteinGebouw } from './fontein3d.js';
 import { Geheimen3D } from './geheimen3d.js';
 import { Weer3D, Blaadjes, SEIZOEN_BLAD, SEIZOEN_BLADVOL } from './weer3d.js';
 import {
   belfortGebouw, windvaanGeo, weerbordGeo, provinciaalhofGebouw, olvkerkGebouw, molenGebouw, wiekenGeo,
-  scheepswerfGebouw, waterlaboGebouw, sluisGebouw, sluisdeurGeo, vuurtorenGebouw, fonteinGebouw,
+  scheepswerfGebouw, waterlaboGebouw, sluisGebouw, sluisdeurGeo, vuurtorenGebouw,
   trapgevelHuis, muurGeo, muurtorenGeo, stadspoortGeo, bankGeo, bloembakGeo, vlagGeo, waterhuisGeo, terrasGeo, havenkraanGeo,
 } from './brugge.js';
 import { Wegen3D } from './wegen3d.js';
@@ -460,8 +461,9 @@ export class Stad3D {
     fo.position.set(PLEIN.klasmeter.x, 0, PLEIN.klasmeter.z); this.scene.add(fo);
     this.fontein = new Fontein(this, PLEIN.klasmeter);
     // de ring die de klasvoortgang toont, blijft boven de fontein zweven
-    this.meterRing = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.09, 8, 24), new THREE.MeshBasicMaterial({ color: '#ffd166' }));
-    this.meterRing.rotation.x = Math.PI / 2; this.meterRing.position.set(PLEIN.klasmeter.x, 2.8, PLEIN.klasmeter.z);
+    // de klasmeter: een gouden ring die langs de zuil van de fontein omhoog schuift
+    this.meterRing = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.05, 8, 24), new THREE.MeshLambertMaterial({ color: '#f2c14e', emissive: '#7a5a12' }));
+    this.meterRing.rotation.x = Math.PI / 2; this.meterRing.position.set(PLEIN.klasmeter.x, 0.62, PLEIN.klasmeter.z);
     this.meterRing.userData.id = 'klasmeter'; this.scene.add(this.meterRing);
     const kl = this._mesh(kluisGebouw(), 'kluis');
     kl.position.set(PLEIN.kluis.x, 0, PLEIN.kluis.z); kl.rotation.y = PLEIN.kluis.rot; kl.scale.setScalar(0.85); this.scene.add(kl);
@@ -1523,7 +1525,7 @@ export class Stad3D {
     this._updateStorm(dt);
     this._updateAnims(dt);
     for (const w of this.wolken) { const d = w.userData.d; d.a += d.v * dt; w.position.set(Math.cos(d.a) * d.r, d.y, Math.sin(d.a) * d.r); }
-    if (this.meterDoel != null) { this.meterNu = lerp(this.meterNu ?? 0, this.meterDoel, 1 - Math.exp(-dt * 1.5)); this.meterRing.position.y = 0.7 + this.meterNu * 3.0; this.meterRing.rotation.z = this.t; }
+    if (this.meterDoel != null) { this.meterNu = lerp(this.meterNu ?? 0, this.meterDoel, 1 - Math.exp(-dt * 1.5)); this.meterRing.position.y = 0.62 + this.meterNu * 0.64; this.meterRing.rotation.z = this.t; }
     if (this.vlam) { this.vlam.scale.set(1, 0.85 + Math.sin(this.t * 11) * 0.12 + Math.sin(this.t * 17) * 0.06, 1); this.vlam.rotation.y = this.t * 2; }
     if (this.selRing.visible) this.selRing.material.opacity = 0.6 + Math.sin(this.t * 4) * 0.3;
     this._updateMarkers();

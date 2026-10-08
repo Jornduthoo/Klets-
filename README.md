@@ -204,6 +204,7 @@ Twee weergaven (knop *Toon de stad* / *Toon De Slijkkraak*, of rechtstreeks `dig
   js/city/verhaal3d.js       het verhaal in 3D: hoogwater (shader met masker), afval, zandzakjes, roeiboten en de weekdingen (weerstation, masten, riet, sluis, bouwplaatsen, feest)
   js/city/slijkkraak3d.js    De Slijkkraak: kop met ogen die knipperen, ademen, wiegen, armen over bruggen en sluis, druppels en bellen; raid en verslaan
   js/core/stem.js            voorlezen: opnames uit audio/stem, anders de beste Vlaamse browserstem; knoppen, zinnen, altijd/op vraag/uit
+  js/city/fontein3d.js       de fontein op de Markt: achthoekig stenen bekken met leeuwen, schalen, stralen, watergordijn, spatkringen en nevel; stil en troebel tot ze hersteld is
   js/city/vaart.js           vaarroutes, bootmaten en de boog van de bruggen; controleerVaart(): geen boot door een brug of een kaaimuur
   js/city/tijd.js            de echte tijd in Brugge (Europe/Brussels) en de stand van de zon en de maan; ?uur= en ?datum=
   js/city/stad.js            kiest 3D of 2D, bewaart de kwaliteitskeuze

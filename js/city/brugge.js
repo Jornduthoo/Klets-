@@ -248,21 +248,6 @@ export function vuurtorenGebouw() {
   return b.bouw();
 }
 
-/** De grote fontein op de Markt (de oude klasmeter): drie schalen met stralen. */
-export function fonteinGebouw() {
-  const b = new Bouwer('fontein');
-  b.cil(2.0, 2.2, 0.26, 0, 0, 0, '#d5cdbb', 20);
-  b.cil(1.82, 1.9, 0.12, 0, 0.26, 0, '#9fd0e8', 20);
-  b.cil(0.4, 0.5, 0.5, 0, 0.26, 0, '#cfc6b4', 12);
-  b.cil(1.0, 0.7, 0.14, 0, 0.76, 0, '#d5cdbb', 16);
-  b.cil(0.22, 0.3, 0.7, 0, 0.9, 0, '#cfc6b4', 10);
-  b.cil(0.56, 0.4, 0.12, 0, 1.6, 0, '#d5cdbb', 14);
-  b.cil(0.12, 0.16, 0.5, 0, 1.72, 0, '#cfc6b4', 8);
-  b.bol(0.16, 0, 2.3, 0, '#c9a24b', 10);
-  for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2 + 0.4; b.bol(0.14, Math.cos(a) * 1.5, 0.4, Math.sin(a) * 1.5, '#b9c4d2', 8); }
-  return b.bouw();
-}
-
 /** Kaaimuur: een stuk bakstenen wal (lengte 1, wordt geschaald) met een stenen rand. Lokaal: z = 0 is de waterkant, +z is het land. */
 export function kaaiGeo() {
   const b = new Bouwer('kaai'); b.ao = false;
