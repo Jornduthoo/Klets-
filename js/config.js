@@ -5,14 +5,17 @@ export const METHODE = 'Vagant';
 
 /** Welke opslag en welke live-verbinding gebruikt de app?
  *  'local'    = localStorage + BroadcastChannel (werkt meteen, per toestel)
- *  'supabase' = gedeelde database + realtime (nog een stub, zie js/core/*.js) */
+ *  'supabase' = gedeelde klasdatabank + realtime (zie sql/vagant-supabase.sql en docs/supabase-stappen.md)
+ *  Je hoeft hier niets te veranderen: de leerkracht zet "Klas online (Supabase)" aan in het dashboard
+ *  (Instellingen), en leerlingen krijgen het via de klaslink of QR-code (zie js/core/backend.js). */
 export const BACKEND = {
   store: 'local',
   sync: 'local',
   supabase: {
-    // TODO: vul in na het aanmaken van een Supabase-project in de EU-regio (bv. eu-central-1, Frankfurt).
-    url: '',
-    anonKey: '',
+    // Supabase-project in de EU (Ierland, eu-west-1). Beide waarden zijn publiek bedoeld.
+    // NOOIT de secret/service_role key hier zetten.
+    url: 'https://kkqzstqsczcooutdjypt.supabase.co',
+    anonKey: 'sb_publishable_woxocUFof4ifDWmkVGsHsQ_HL_eMAhc',
   },
 };
 

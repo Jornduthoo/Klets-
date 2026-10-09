@@ -12,9 +12,14 @@ import { VERHAAL_STAPPEN, heeftVerhaal } from '../city/verhaal.js';
 import { leesKnop, stemInfo, stemTekst, opStemmen } from '../core/stem.js';
 import { avatarBeeld } from '../figuren/portret.js';
 import { AVATAR_OPTIES, willekeurigeLook } from '../figuren/uiterlijk.js';
+import { backendKeuze, zetBackend, klaslink, projectUrl } from '../core/backend.js';
+import { BACKEND } from '../config.js';
+import * as SB from '../core/supabase.js';
 
 const store = createStore();
 const sync = createSync('klas');
+/** Staat de klas online (Supabase)? Dan meldt de leerkracht zich aan met e-mail en wachtwoord i.p.v. de PIN. */
+const ONLINE = backendKeuze().online;
 const D = { settings: null, pupils: [], attempts: [], events: [], stats: {}, tab: 'overzicht', week: 1, routeFilter: 'alle', raid: null };
 window.__dash = D;
 
@@ -41,8 +46,92 @@ async function init() {
   sync.subscribe('raid:state', (st) => { D.raid = st; if (D.tab === 'raid' || D.tab === 'overzicht') render(); });
   sync.subscribe('klas:update', () => reload());
   store.onChange(() => reload());
+  if (ONLINE) return startOnline();
   if (Number(localStorage.getItem('klets:v1:leerkrachtTot') || 0) > Date.now()) return start();
   showPin();
+}
+
+// ---------- klas online: aanmelden als leerkracht en de klas maken ----------
+const markeerLeerkracht = () => { try { localStorage.setItem('klets:v1:leerkrachtTot', String(Date.now() + 12 * 3600 * 1000)); } catch { /* */ } };
+// een geweigerde of mislukte actie (bv. geen wifi) altijd tonen
+window.addEventListener('unhandledrejection', (e) => { if (e.reason instanceof SB.VagantFout) { toast(e.reason.message); e.preventDefault(); } });
+
+async function startOnline(melding = '') {
+  let s;
+  try { s = await SB.leerkrachtSessie(); } catch (e) { return showOnlineLogin(e.message); }
+  if (!s) return showOnlineLogin(melding);
+  const kl = SB.huidigeKlas();
+  if (kl?.rol === 'leerkracht') { markeerLeerkracht(); return start(); }
+  let klassen;
+  try { klassen = await SB.mijnKlassen(); } catch (e) { return showOnlineLogin(e.message); }
+  if (klassen.length) { SB.kiesKlas(klassen[klassen.length - 1]); markeerLeerkracht(); return start(); }
+  showMaakKlas();
+}
+function loginKader(...inhoud) {
+  const app = $('#app'); app.innerHTML = '';
+  app.append(h('main', { class: 'login' }, h('div', { class: 'login-kop' }, h('h1', { class: 'logo' }, METHODE), h('p', {}, 'Leerkrachtendashboard - klas online')),
+    ...inhoud,
+    h('p', { class: 'login-voet' }, h('a', { href: 'index.html' }, 'Naar de stad'), ' - ',
+      h('a', { href: '#', id: 'naar-lokaal', onclick: (e) => { e.preventDefault(); if (confirm('De klas online uitzetten op dit toestel? Je werkt dan weer met de gegevens van dit toestel alleen (PIN).')) { zetBackend({ aan: false }); location.reload(); } } }, 'Werk zonder klasdatabank (enkel dit toestel)'))));
+}
+function showOnlineLogin(melding = '') {
+  const email = h('input', { type: 'email', class: 'invoer', id: 'lk-email', autocomplete: 'username', placeholder: 'naam@school.be', 'aria-label': 'E-mailadres' });
+  const ww = h('input', { type: 'password', class: 'invoer', id: 'lk-wachtwoord', autocomplete: 'current-password', placeholder: 'wachtwoord', 'aria-label': 'Wachtwoord' });
+  const fout = h('p', { class: 'fout', 'aria-live': 'polite' }, melding);
+  const bezig = (aan) => { for (const b of document.querySelectorAll('.pin-blok button')) b.disabled = aan; };
+  const aanmelden = async () => {
+    bezig(true); fout.textContent = '';
+    try { await SB.leerkrachtAanmelden(email.value.trim(), ww.value); await startOnline(); }
+    catch (e) { fout.textContent = e.message; bezig(false); }
+  };
+  const registreren = async () => {
+    if (!/^\S+@\S+\.\S+$/.test(email.value.trim())) { fout.textContent = 'Typ je e-mailadres.'; return; }
+    if (ww.value.length < 8) { fout.textContent = 'Kies een wachtwoord van minstens 8 tekens.'; return; }
+    bezig(true); fout.textContent = '';
+    try {
+      const r = await SB.leerkrachtRegistreren(email.value.trim(), ww.value);
+      if (r.bevestigen) { fout.textContent = 'Bijna klaar: klik op de link in de mail van Supabase en meld je daarna hier aan.'; bezig(false); return; }
+      await startOnline();
+    } catch (e) { fout.textContent = e.message; bezig(false); }
+  };
+  ww.addEventListener('keydown', e => { if (e.key === 'Enter') aanmelden(); });
+  loginKader(h('section', { class: 'kaart-blok pin-blok' },
+    h('h2', {}, 'Aanmelden als leerkracht'),
+    h('label', { class: 'lbl', for: 'lk-email' }, 'E-mailadres'), email,
+    h('label', { class: 'lbl', for: 'lk-wachtwoord' }, 'Wachtwoord'), ww, fout,
+    h('button', { class: 'btn primair groot', type: 'button', id: 'lk-aanmelden', onclick: aanmelden }, 'Aanmelden'),
+    h('button', { class: 'btn', type: 'button', id: 'lk-registreren', onclick: registreren }, 'Eerste keer? Maak een account'),
+    h('p', { class: 'tip' }, 'Enkel de leerkracht heeft een account. Reizigers gebruiken geen e-mail: zij melden zich aan met de klascode en een bijnaam.')));
+  email.focus();
+}
+function showMaakKlas() {
+  const naam = h('input', { type: 'text', class: 'invoer', id: 'klas-naam', maxlength: 40, placeholder: 'bv. 6A', 'aria-label': 'Naam van de klas' });
+  const fout = h('p', { class: 'fout', 'aria-live': 'polite' });
+  const knop = h('button', { class: 'btn primair groot', type: 'button', id: 'klas-maken' }, 'Maak de klas');
+  knop.onclick = async () => {
+    knop.disabled = true;
+    try { const k = await SB.maakKlas(naam.value.trim()); markeerLeerkracht(); toonNieuweKlas(k); }
+    catch (e) { fout.textContent = e.message; knop.disabled = false; }
+  };
+  loginKader(h('section', { class: 'kaart-blok pin-blok' },
+    h('h2', {}, 'Maak je klas'),
+    h('p', {}, 'Je klas krijgt een klascode van 6 tekens. Reizigers typen die code (of scannen de QR-code) en kiezen een bijnaam.'),
+    h('label', { class: 'lbl', for: 'klas-naam' }, 'Naam van de klas (mag leeg blijven, geen schoolnaam nodig)'), naam, fout, knop,
+    h('button', { class: 'btn zacht', type: 'button', onclick: async () => { await SB.afmelden(); showOnlineLogin(); } }, 'Afmelden')));
+  naam.focus();
+}
+function toonNieuweKlas(k) {
+  loginKader(h('section', { class: 'kaart-blok pin-blok' },
+    h('h2', {}, 'Je klas is klaar'),
+    h('p', {}, 'De klascode:'), h('p', { class: 'klascode-groot', id: 'nieuwe-klascode' }, k.code),
+    h('p', { class: 'tip' }, 'Bij Instellingen vind je de klaslink en de QR-code voor de Chromebooks, en bij Reizigers de pincodes.'),
+    h('button', { class: 'btn primair groot', type: 'button', id: 'naar-dashboard', onclick: () => start() }, 'Naar het dashboard')));
+}
+/** QR-code als SVG (vendor/qrcode-generator, geen netwerk). */
+async function qrBeeld(tekst) {
+  const { default: qrcode } = await import('../../vendor/qrcode-generator-1.4.4.esm.js');
+  const q = qrcode(0, 'M'); q.addData(tekst); q.make();
+  return h('div', { class: 'qr', html: q.createSvgTag({ cellSize: 4, margin: 2, scalable: true, alt: 'QR-code met de klaslink' }) });
 }
 
 function showPin() {
@@ -65,6 +154,7 @@ function showPin() {
 
 async function start() { await reload(); }
 async function reload() {
+  if (ONLINE) { D.klas = SB.huidigeKlas(); try { D.pins = Object.fromEntries((await SB.reizigersMetPin()).map(r => [r.pid, r.pin])); } catch { D.pins = D.pins || {}; } }
   D.settings = await store.getSettings();
   zetThema(D.settings);
   D.pupils = (await store.listPupils()).filter(p => !p.leerkracht);
@@ -84,8 +174,9 @@ function render() {
     h('header', { class: 'dash-kop' }, h('h1', { class: 'logo mini' }, METHODE),
       h('span', { class: 'dash-sub' }, `Thema ${THEMA.nr}: ${THEMA.naam} - ${stadNaam()} - week ${D.settings.huidigeWeek}`),
       themaKiezer(), weekKiezer(),
+      ONLINE && D.klas ? h('span', { class: 'klascode-chip', id: 'kop-klascode', title: 'Klascode voor de reizigers' }, 'Klascode ', h('b', {}, D.klas.code)) : null,
       h('a', { class: 'btn klein', href: 'index.html?leerkracht=1' }, 'Open de stad als leerkracht'),
-      h('button', { class: 'btn klein zacht', type: 'button', onclick: () => { localStorage.removeItem('klets:v1:leerkrachtTot'); showPin(); } }, 'Afmelden')),
+      h('button', { class: 'btn klein zacht', type: 'button', onclick: async () => { localStorage.removeItem('klets:v1:leerkrachtTot'); if (ONLINE) { await SB.afmelden(); showOnlineLogin(); } else showPin(); } }, 'Afmelden')),
     nav, main));
   ({ overzicht, leerlingen, doelen, revanche, weken, labos, raid, codes, instellingen })[D.tab](main);
 }
@@ -165,9 +256,14 @@ function leerlingen(main) {
     sync.publish('klas:update', {}); reload();
   };
   const tabel = h('table', { class: 'dash-tabel' },
-    h('thead', {}, h('tr', {}, h('th', {}, ''), h('th', {}, 'Naam'), h('th', {}, 'XP en rang'), ...MACHTEN.map(m => h('th', { title: m.uitleg }, m.kort)), h('th', {}, 'Codes'), h('th', {}, ''))),
+    h('thead', {}, h('tr', {}, h('th', {}, ''), h('th', {}, 'Naam'), ONLINE ? h('th', { title: 'Om op een ander toestel verder te spelen: naam + pincode' }, 'Pincode') : null, h('th', {}, 'XP en rang'), ...MACHTEN.map(m => h('th', { title: m.uitleg }, m.kort)), h('th', {}, 'Codes'), h('th', {}, ''))),
     h('tbody', {}, ...D.pupils.map(p => h('tr', {},
       h('td', {}, avatar(p.look)), h('td', {}, h('b', {}, p.naam), p.demo ? h('small', { class: 'tip' }, ' demo') : null),
+      ONLINE ? h('td', { class: 'pin-cel' }, h('code', { class: 'code-chip', dataset: { pin: p.id } }, D.pins?.[p.id] || '----'), ' ',
+        h('button', { class: 'btn klein zacht', type: 'button', title: 'Nieuwe pincode (heft ook een blokkering op)', onclick: async () => {
+          if (!confirm(`Een nieuwe pincode voor ${p.naam}? De oude werkt dan niet meer op een nieuw toestel.`)) return;
+          try { const pin = await SB.nieuwePin(p.id); toast(`Nieuwe pincode voor ${p.naam}: ${pin}`); reload(); } catch (e) { toast(e.message); }
+        } }, 'Nieuw')) : null,
       h('td', {}, `${p.xp || 0} XP`, h('br'), h('small', {}, rangVoor(p.xp || 0).naam)),
       ...MACHTEN.map(m => h('td', {}, h('select', { class: 'route-select', 'aria-label': `Route ${m.naam} voor ${p.naam}`, dataset: { pid: p.id, macht: m.id }, onchange: async (e) => {
         const fresh = await store.getPupil(p.id); fresh.routes = { ...(fresh.routes || {}), [m.id]: e.target.value }; await store.savePupil(fresh); sync.publish('klas:update', {}); toast(`${p.naam}: ${m.naam} = ${ROUTE[e.target.value].naam}`); reload();
@@ -180,7 +276,7 @@ function leerlingen(main) {
       h('div', { class: 'knoppen links' }, ...ROUTES.map(r => h('button', { class: 'btn klein', type: 'button', onclick: () => alleRoutes(r.id) }, `Iedereen ${r.naam}`)))),
     h('div', { class: 'tabel-scroll' }, tabel),
     h('section', { class: 'dash-blok' }, h('h2', {}, 'Reiziger toevoegen'), h('div', { class: 'code-rij' }, naam, h('button', { class: 'btn primair', type: 'button', onclick: voegToe }, 'Toevoegen')),
-      h('p', { class: 'tip' }, 'Reizigers kunnen zichzelf ook aanmaken op de startpagina.')));
+      h('p', { class: 'tip' }, ONLINE ? 'Reizigers kunnen zichzelf ook aanmaken op de startpagina (klascode + bijnaam). Elke reiziger krijgt een pincode: met naam + pincode speelt hij verder op een ander toestel. Verwijderen wist ook alle resultaten en koppelt zijn toestellen los.' : 'Reizigers kunnen zichzelf ook aanmaken op de startpagina.')));
 }
 async function alleRoutes(r) {
   if (!confirm(`Alle routes van alle reizigers op ${ROUTE[r].naam} zetten?`)) return;
@@ -366,6 +462,7 @@ function instellingen(main) {
   };
   zetStem(); opStemmen(zetStem); setTimeout(zetStem, 800);
   add(main,
+    klasOnlineBlok(),
     h('section', { class: 'dash-blok' }, h('h2', {}, 'Voorlezen'),
       h('p', {}, 'Elke tekst die een reiziger leest, heeft een luidspreker. Reizigers kiezen zelf (luidspreker rechtsboven in de stad): altijd, op vraag of uit. Voor de Kompasroute staat het standaard op altijd: filmpjes, gidsen en het verhaal lezen vanzelf voor.'),
       stemRegel, stemHint, leesKnop(`Dag reizigers. Welkom in ${THEMA.stad}. Wie helpt het water weer proper te maken?`, { label: 'Probeer de stem' })),
@@ -377,22 +474,84 @@ function instellingen(main) {
         h('label', {}, 'Dag en nacht'), h('select', { onchange: (e) => saveSettings({ dagNacht: e.target.value }) }, ...[['auto', 'automatisch: de echte tijd in Brugge (dag, schemering en nacht)'], ['nacht', 'altijd nacht'], ['dag', 'altijd dag']].map(([v, t]) => h('option', { value: v, selected: s.dagNacht === v }, t))),
         h('label', {}, 'Klasmeter'), h('span', {}, h('input', { type: 'number', class: 'invoer kort', min: 100, step: 100, value: s.mistDoel, onchange: (e) => saveSettings({ mistDoel: Math.max(100, +e.target.value || 1200) }) }), ' XP per reiziger voor een volle klasmeter'),
         h('label', {}, 'Naam van de stad'), h('span', {}, h('input', { type: 'text', class: 'invoer', value: s.klasNaam, maxlength: 40, placeholder: THEMA.stad, onchange: (e) => saveSettings({ klasNaam: e.target.value.trim() }) }), ` leeg = ${THEMA.stad}`),
-        h('label', {}, 'PIN'), h('span', { class: 'code-rij' }, pin, h('button', { class: 'btn', type: 'button', onclick: () => { if (!/^\d{4,8}$/.test(pin.value)) return toast('Een PIN heeft 4 tot 8 cijfers.'); saveSettings({ pin: pin.value }); } }, 'PIN bewaren')))),
+        ONLINE ? null : h('label', {}, 'PIN'), ONLINE ? null : h('span', { class: 'code-rij' }, pin, h('button', { class: 'btn', type: 'button', onclick: () => { if (!/^\d{4,8}$/.test(pin.value)) return toast('Een PIN heeft 4 tot 8 cijfers.'); saveSettings({ pin: pin.value }); } }, 'PIN bewaren')))),
     h('section', { class: 'dash-blok' }, h('h2', {}, 'Gegevens'),
       h('div', { class: 'knoppen links' },
         h('button', { class: 'btn primair', type: 'button', id: 'export-csv', onclick: exportCSV }, 'Exporteer resultaten (CSV)'),
         h('button', { class: 'btn', type: 'button', onclick: async () => downloadFile(`vagant-export-${datum()}.json`, JSON.stringify(await store.exportAll()), 'application/json') }, 'Exporteer alles (JSON)'),
         h('label', { class: 'btn upload-btn' }, 'Importeer en voeg samen (JSON)', file)),
-      h('p', { class: 'tip' }, 'Samenvoegen is handig zolang elk toestel zijn eigen opslag heeft: exporteer op elke laptop en importeer hier.')),
+      h('p', { class: 'tip' }, ONLINE ? 'Importeren voegt een export van een toestel (uit de tijd zonder klasdatabank) samen met de klasdatabank.' : 'Samenvoegen is handig zolang elk toestel zijn eigen opslag heeft: exporteer op elke laptop en importeer hier.')),
     h('section', { class: 'dash-blok' }, h('h2', {}, 'Demo'),
       h('p', {}, 'Maak 8 voorbeeldreizigers met resultaten (missies en labo\'s) om het dashboard en de stad te verkennen. Ze zijn gemarkeerd als demo.'),
       h('div', { class: 'knoppen links' },
         h('button', { class: 'btn', type: 'button', id: 'demo', onclick: maakDemo }, 'Demodata maken'),
         h('button', { class: 'btn', type: 'button', onclick: wisDemo }, 'Demodata verwijderen'),
-        h('button', { class: 'btn gevaar', type: 'button', onclick: async () => { if (confirm('Alles wissen op dit toestel? Reizigers, resultaten, galerij en instellingen.') && confirm('Zeker? Dit kan niet ongedaan gemaakt worden.')) { await store.reset(); sync.publish('klas:update', {}); localStorage.removeItem('klets:v1:leerkrachtTot'); location.reload(); } } }, 'Alles wissen'))));
+        h('button', { class: 'btn gevaar', type: 'button', onclick: async () => { if (confirm(ONLINE ? 'Alles wissen in de klasdatabank? Alle reizigers (en hun pincodes), resultaten, galerij en instellingen van deze klas. De klascode blijft.' : 'Alles wissen op dit toestel? Reizigers, resultaten, galerij en instellingen.') && confirm('Zeker? Dit kan niet ongedaan gemaakt worden.')) { await store.reset(); sync.publish('klas:update', {}); localStorage.removeItem('klets:v1:leerkrachtTot'); location.reload(); } } }, 'Alles wissen'))));
   void AVATAR_OPTIES;
 }
 const datum = () => new Date().toISOString().slice(0, 10);
+
+/** Instellingen > Klas online (Supabase): aan/uit, Test verbinding, klascode, klaslink en QR-code. */
+function klasOnlineBlok() {
+  const b = backendKeuze();
+  const uitslag = h('ul', { class: 'test-uitslag', id: 'test-uitslag', 'aria-live': 'polite' });
+  const url = h('input', { type: 'url', class: 'invoer', id: 'sb-url', value: b.url, placeholder: 'https://xxxx.supabase.co', 'aria-label': 'Project URL' });
+  const key = h('input', { type: 'text', class: 'invoer', id: 'sb-key', value: b.anonKey, placeholder: 'sb_publishable_...', 'aria-label': 'Publishable key', spellcheck: 'false' });
+  const geldig = () => {
+    const u = projectUrl(url.value), k = key.value.trim();
+    if (!u) { toast('Die Project URL klopt niet (https://....supabase.co).'); return null; }
+    if (/^sb_secret_/.test(k) || /service_role/.test(k)) { toast('Dat is een GEHEIME sleutel. Gebruik de publishable key, en maak in Supabase meteen een nieuwe secret key aan.'); return null; }
+    if (!k) { toast('De publishable key ontbreekt.'); return null; }
+    return { url: u, anonKey: k };
+  };
+  const test = async () => {
+    const g = geldig(); if (!g) return;
+    if (g.url !== b.url || g.anonKey !== b.anonKey) { zetBackend({ aan: b.online, ...g }); toast('Opgeslagen. De pagina laadt opnieuw.'); setTimeout(() => location.reload(), 600); return; }
+    uitslag.innerHTML = ''; uitslag.append(h('li', {}, 'Even testen ...'));
+    const lijst = await SB.testVerbinding();
+    uitslag.innerHTML = '';
+    for (const r of lijst) uitslag.append(h('li', { class: r.ok ? 'ok' : 'niet-ok' }, (r.ok ? 'In orde: ' : 'Nog niet: ') + r.tekst));
+  };
+  const schakel = h('input', { type: 'checkbox', id: 'klas-online', checked: b.online, onchange: (e) => {
+    const aan = e.target.checked;
+    const g = geldig(); if (!g) { e.target.checked = !aan; return; }
+    const vraag = aan
+      ? 'De klas online zetten op dit toestel? Je meldt je daarna aan met e-mail en wachtwoord en maakt je klas. (Voer eerst het SQL-script uit in Supabase en test de verbinding.)'
+      : 'De klas online uitzetten op dit toestel? De klasdatabank blijft bestaan; dit toestel werkt dan weer met zijn eigen gegevens (PIN).';
+    if (!confirm(vraag)) { e.target.checked = !aan; return; }
+    zetBackend({ aan, ...g }); location.reload();
+  } });
+  const blok = h('section', { class: 'dash-blok', id: 'klas-online-blok' }, h('h2', {}, 'Klas online (Supabase)'),
+    h('p', {}, 'Met een gedeelde klasdatabank in de EU zien het dashboard en het digibord meteen wat elke reiziger doet, op elk toestel, en werkt de eindbaas tussen het digibord en de Chromebooks. Reizigers gebruiken enkel een voornaam of bijnaam en een pincode: geen e-mail, geen achternaam.'),
+    h('label', { class: 'schakel' }, schakel, ' Klas online (Supabase) op dit toestel'),
+    h('details', { class: 'geavanceerd' }, h('summary', {}, 'Project URL en publishable key'),
+      h('div', { class: 'form-grid' }, h('label', { for: 'sb-url' }, 'Project URL'), url, h('label', { for: 'sb-key' }, 'Publishable key'), key),
+      h('p', { class: 'tip' }, `Standaard: ${BACKEND.supabase.url}. De publishable key is publiek bedoeld. Zet hier NOOIT de secret key (sb_secret_... of service_role).`)),
+    h('div', { class: 'knoppen links' }, h('button', { class: 'btn', type: 'button', id: 'test-verbinding', onclick: test }, 'Test verbinding')),
+    uitslag);
+  if (ONLINE && D.klas) {
+    const link = klaslink(D.klas.code);
+    const qrVak = h('div', { class: 'qr-vak' });
+    qrBeeld(link).then(el => qrVak.append(el)).catch(() => qrVak.append(h('p', { class: 'tip' }, 'QR-code maken lukte niet.')));
+    add(blok,
+      h('h3', {}, `Klas ${D.klas.naam || ''}`),
+      h('p', {}, 'Klascode: ', h('span', { class: 'klascode-groot', id: 'klascode' }, D.klas.code)),
+      h('p', {}, 'Klaslink voor de Chromebooks (zet de klas meteen online op dat toestel en vult de klascode in):'),
+      h('div', { class: 'code-rij' }, h('input', { type: 'text', class: 'invoer', readonly: true, value: link, id: 'klaslink', 'aria-label': 'Klaslink' }),
+        h('button', { class: 'btn', type: 'button', onclick: async () => { try { await navigator.clipboard.writeText(link); toast('Gekopieerd.'); } catch { $('#klaslink').select(); } } }, 'Kopieer')),
+      qrVak,
+      h('p', { class: 'tip' }, 'Op het digibord tonen en laten scannen, of de link delen via Smartschool/Classroom. Wie de klascode kent, kan een reiziger aanmaken: deel ze enkel met je klas. Een reiziger die je verwijdert, verliest meteen de toegang.'),
+      h('div', { class: 'knoppen links' }, h('button', { class: 'btn zacht', type: 'button', onclick: async () => {
+        let klassen = []; try { klassen = await SB.mijnKlassen(); } catch (e) { return toast(e.message); }
+        const keuze = prompt('Typ de klascode van de klas die je wil openen, of NIEUW voor een nieuwe klas:\n' + klassen.map(k => `${k.code} ${k.naam || ''}`).join('\n'));
+        if (!keuze) return;
+        if (keuze.trim().toUpperCase() === 'NIEUW') { showMaakKlas(); return; }
+        const k = klassen.find(x => x.code === keuze.trim().toUpperCase()); if (!k) return toast('Die klas vind ik niet.');
+        SB.kiesKlas(k); location.reload();
+      } }, 'Andere klas of nieuwe klas')));
+  }
+  return blok;
+}
 
 // ---------- export ----------
 function csv(rows) { return '﻿' + rows.map(r => r.map(v => { const s = String(v ?? ''); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(';')).join('\r\n'); }

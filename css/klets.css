@@ -321,3 +321,20 @@ body.voorlezen-uit .lees-knop { display: none !important; }
 .voorlees-keuze input { margin-top: 4px; }
 @media (prefers-reduced-motion: no-preference) { .lees-knop.spreekt svg { animation: lees-puls 1s ease-in-out infinite; } }
 @keyframes lees-puls { 50% { opacity: .45; } }
+
+/* ---------- klas online (Supabase): aanmelden, klascode, pincode, verbinding ---------- */
+.klascode-invoer { font-size: 1.6em; letter-spacing: .3em; text-transform: uppercase; text-align: center; font-family: ui-monospace, monospace; }
+.klascode-groot, .pincode-groot { display: inline-block; font-family: ui-monospace, monospace; font-size: 2em; font-weight: 800; letter-spacing: .25em; background: var(--perkament2); border: var(--rand); border-radius: 8px; padding: .15em .5em; margin: .2em 0; }
+.pincode-groot { font-size: 2.6em; }
+.klascode-chip { background: var(--perkament); color: var(--ink); border: 2px solid var(--ink); border-radius: 6px; padding: 4px 8px; font-weight: 700; }
+.klascode-chip b { font-family: ui-monospace, monospace; letter-spacing: .15em; }
+.qr-vak .qr { width: 220px; max-width: 100%; background: #fff; padding: 6px; border: var(--rand); border-radius: 8px; margin: 8px 0; }
+.qr-vak .qr svg { width: 100%; height: auto; display: block; }
+.test-uitslag { list-style: none; padding: 0; margin: 8px 0; }
+.test-uitslag li { padding: 4px 8px; border-left: 4px solid var(--zacht); margin: 4px 0; }
+.test-uitslag li.ok { border-color: #3fa37a; }
+.test-uitslag li.niet-ok { border-color: #a24a12; font-weight: 700; }
+.pin-cel { white-space: nowrap; }
+.net-status { position: fixed; left: 12px; bottom: 12px; z-index: 9999; max-width: min(520px, calc(100vw - 24px)); background: #fff6d8; color: #3a2a00; border: 2px solid #a26b12; border-radius: 8px; padding: 8px 12px; font-weight: 700; box-shadow: 3px 3px 0 rgba(0,0,0,.35); }
+.net-status.offline { background: #ffe9dc; border-color: #a24a12; }
+.in-stad .net-status { bottom: 96px; }

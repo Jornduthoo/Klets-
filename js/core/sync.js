@@ -7,7 +7,7 @@
 //   sync.close()
 // Berichten bevatten nooit meer dan een bijnaam-id; de raid stuurt zelfs geen foute antwoorden door.
 
-import { BACKEND } from '../config.js';
+import { backendKeuze } from './backend.js';
 
 /** Werkt tussen tabbladen/vensters op hetzelfde toestel (demo, of digibord + leerling op één pc). */
 export class LocalSync {
@@ -34,29 +34,55 @@ export class LocalSync {
 }
 
 /**
- * Stub voor live-verbinding over het netwerk via Supabase Realtime (Broadcast-kanalen).
- * Zelfde interface als LocalSync.
- *
- * TODO (volgende versie):
- *  - Supabase-project in de EU-regio (zelfde project als SupabaseStore).
- *  - connect(): this.client = createClient(url, anonKey); this.channel = this.client.channel('klets-' + room, { config: { broadcast: { self: false } } });
- *               this.channel.on('broadcast', { event: '*' }, ({ event, payload }) => this._deliver(event, payload)); await this.channel.subscribe();
- *  - publish(type, payload): this.channel.send({ type: 'broadcast', event: type, payload });
- *  - Kamer = klascode (geen schoolnaam, geen leerlingnamen in de kamernaam).
- *  - Payloads: enkel bijnaam-id's; raid-'hit' bevat alleen dat er een juist antwoord was.
+ * Live-verbinding over het netwerk via Supabase Realtime Broadcast. Zelfde interface als LocalSync.
+ *  - Kamer = het privékanaal van de klas: topic 'klas:<klas_id>' (geen schoolnaam, geen leerlingnamen).
+ *    Enkel leden van de klas mogen er luisteren en zenden (RLS op realtime.messages, zie sql/vagant-supabase.sql).
+ *  - Is er nog geen klas op dit toestel (leerling nog niet aangemeld), dan verbindt het vanzelf zodra er een klas is.
+ *  - Payloads: enkel bijnaam-id's; een raid-'hit' zegt alleen dat er een juist antwoord was.
  */
 export class SupabaseSync {
-  constructor(room = 'klas', { url, anonKey } = {}) { this.room = room; this.url = url; this.anonKey = anonKey; this.handlers = new Map(); }
-  async connect() { throw new Error('SupabaseSync is nog niet gebouwd. Gebruik BACKEND.sync = \'local\'.'); }
-  publish() { /* TODO: channel.send(...) */ }
+  constructor(room = 'klas', { url, anonKey, klas, kanaal } = {}) {
+    this.room = room; this.url = url; this.anonKey = anonKey;
+    this.handlers = new Map(); this.id = Math.random().toString(36).slice(2);
+    this._klas = klas || null; this._kanaalFn = kanaal || null;
+    this.ent = null; this._af = [];
+    this._opKlas = () => { this._los(); this.connect(); };
+  }
+  async _sb() { return import('./supabase.js'); }
+  async connect() {
+    if (typeof window !== 'undefined' && !this._luistert) { window.addEventListener('vagant-klas', this._opKlas); this._luistert = true; }
+    if (this.ent) return this;
+    const sb = this._klas && this._kanaalFn ? null : await this._sb();
+    const klas = (this._klas || sb.huidigeKlas)();
+    if (!klas?.id) return this;
+    try {
+      const ent = await (this._kanaalFn || sb.klasKanaal)(klas.id, this.room);
+      this.ent = ent;
+      this._af.push(ent.on('*', (wrapped, event) => {
+        if (event === 'db' || !wrapped || wrapped.from === this.id) return;
+        this._deliver({ type: event, payload: wrapped.payload, from: wrapped.from, ts: wrapped.ts });
+      }));
+    } catch (e) { console.warn('Vagant: live-verbinding niet beschikbaar', e); }
+    return this;
+  }
+  _los() { for (const f of this._af) f(); this._af = []; this.ent = null; }
+  _deliver(msg) {
+    for (const fn of this.handlers.get(msg.type) || []) { try { fn(msg.payload, { from: msg.from, ts: msg.ts }); } catch (err) { console.error(err); } }
+    for (const fn of this.handlers.get('*') || []) { try { fn(msg, {}); } catch (err) { console.error(err); } }
+  }
+  publish(type, payload = {}) { this.ent?.send(type, { payload, from: this.id, ts: Date.now() }); }
   subscribe(type, fn) {
     if (!this.handlers.has(type)) this.handlers.set(type, new Set());
     this.handlers.get(type).add(fn);
     return () => this.handlers.get(type)?.delete(fn);
   }
-  close() { this.handlers.clear(); }
+  close() {
+    this._los(); this.handlers.clear();
+    if (this._luistert) { window.removeEventListener('vagant-klas', this._opKlas); this._luistert = false; }
+  }
 }
 
 export function createSync(room = 'klas') {
-  return BACKEND.sync === 'supabase' ? new SupabaseSync(room, BACKEND.supabase) : new LocalSync(room);
+  const b = backendKeuze();
+  return b.sync === 'supabase' ? new SupabaseSync(room, { url: b.url, anonKey: b.anonKey }) : new LocalSync(room);
 }

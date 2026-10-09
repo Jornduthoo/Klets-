@@ -4,6 +4,8 @@
 // (zie data/themas.js). Het weer en het seizoen volgen het echte weer van Brugge (js/city/weer.js).
 import { createStore } from '../core/store.js';
 import { createSync } from '../core/sync.js';
+import { backendKeuze, bewaardeKlascode, bewaarKlascode } from '../core/backend.js';
+import * as SB from '../core/supabase.js';
 import { h, $, add, uid, clamp, blip, toast, rng } from '../core/util.js';
 import { leesKnop, spreek, stopSpreken, zetReiziger, voorleesStand, zetVoorleesStand, stemTekst, opStemmen, tekstVan as tekstLijst } from '../core/stem.js';
 import { MACHTEN, MACHT, ROUTE, ROUTES, GIDSEN, RANGEN, XP, DAGEN, METHODE } from '../config.js';
@@ -28,6 +30,8 @@ import { SPELLEN, GEHEIMEN, BELONING, geheimenVan } from '../spelletjes/geheimen
 
 const store = createStore();
 const sync = createSync('klas');
+/** Staat de klas online (gedeelde klasdatabank in Supabase)? Dan melden reizigers zich aan met klascode + bijnaam. */
+const ONLINE = backendKeuze().online;
 const S = { settings: null, pupil: null, pupils: [], stad: null, model: null, raid: null, preview: false, weer: null };
 window.__vagant = S;
 window.__klets = S; // oude naam, voor bestaande tests
@@ -64,7 +68,7 @@ async function init() {
     return enterWorld();
   }
   const pid = sessionStorage.getItem('vagant-pid') || sessionStorage.getItem('klets-pid');
-  if (pid) { const p = await store.getPupil(pid); if (p) { S.pupil = p; return enterWorld(); } }
+  if (pid && (!ONLINE || SB.huidigeKlas())) { const p = await store.getPupil(pid); if (p) { S.pupil = p; return enterWorld(); } }
   showLogin();
 }
 function isTeacher() { try { return Number(localStorage.getItem('klets:v1:leerkrachtTot') || 0) > Date.now(); } catch { return false; } }
@@ -80,6 +84,7 @@ async function refresh({ vlieg = false } = {}) {
 
 // ---------- aanmelden ----------
 async function showLogin() {
+  if (ONLINE) return showLoginOnline();
   S.pupils = await store.listPupils();
   document.body.classList.add('in-aanmelden');
   const app = $('#app'); app.innerHTML = '';
@@ -95,6 +100,113 @@ async function showLogin() {
 }
 async function login(p) { sessionStorage.setItem('vagant-pid', p.id); S.pupil = p; enterWorld(); }
 function logout() { sessionStorage.removeItem('vagant-pid'); sessionStorage.removeItem('klets-pid'); location.href = location.pathname; }
+
+// ---------- aanmelden als de klas online staat (klascode + bijnaam, pincode op een ander toestel) ----------
+function loginScherm(...inhoud) {
+  document.body.classList.add('in-aanmelden');
+  const app = $('#app'); app.innerHTML = '';
+  app.append(h('main', { class: 'login' },
+    h('div', { class: 'login-kop' }, h('h1', { class: 'logo' }, METHODE), h('p', {}, `Thema ${THEMA.nr}: ${THEMA.naam} - de stad ${THEMA.stad}`)),
+    ...inhoud,
+    h('p', { class: 'login-voet' }, h('a', { href: 'leerkracht.html' }, 'Leerkracht'), ' - ', h('a', { href: 'digibord.html' }, 'Digibord'))));
+}
+async function showLoginOnline() {
+  const kl = SB.huidigeKlas();
+  const code = kl?.code || bewaardeKlascode();
+  if (!code) return toonKlascodeStap();
+  if (!kl || kl.code !== code) {
+    // de klascode is gekend (klaslink of vorige keer), maar dit toestel weet nog niet waar het hoort
+    try {
+      await SB.zorgVoorAnoniemeSessie();
+      const plaats = await SB.mijnPlaats(code);
+      if (plaats) SB.zetKlas({ ...plaats.klas, rol: plaats.rol, pid: plaats.pid, bijnaam: plaats.bijnaam });
+      else { const k = await SB.zoekKlas(code); return toonKeuzeStap({ ...k, rol: null }); }
+    } catch (e) {
+      if (e.code === 'onbekend') { bewaarKlascode(null); return toonKlascodeStap(e.message); }
+      return toonKlascodeStap(e.message, code);
+    }
+  }
+  return toonKeuzeStap(SB.huidigeKlas());
+}
+function toonKlascodeStap(foutTekst = '', voorstel = '') {
+  const inp = h('input', { type: 'text', class: 'invoer klascode-invoer', id: 'klascode', maxlength: 6, autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'ABC234', 'aria-label': 'Klascode', value: voorstel });
+  const fout = h('p', { class: 'fout', 'aria-live': 'polite' }, foutTekst);
+  const knop = h('button', { class: 'btn groot primair', type: 'button', id: 'klascode-ok' }, 'Verder');
+  const go = async () => {
+    const c = inp.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (c.length !== 6) { fout.textContent = 'Een klascode heeft 6 tekens.'; return; }
+    knop.disabled = true; fout.textContent = 'Even zoeken ...';
+    try {
+      const k = await SB.zoekKlas(c);
+      const plaats = await SB.mijnPlaats(c);
+      if (plaats) SB.zetKlas({ ...plaats.klas, rol: plaats.rol, pid: plaats.pid, bijnaam: plaats.bijnaam });
+      toonKeuzeStap(plaats ? SB.huidigeKlas() : { ...k, rol: null });
+    } catch (e) { fout.textContent = e.message; knop.disabled = false; }
+  };
+  knop.onclick = go;
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  loginScherm(h('section', { class: 'kaart-blok pin-blok' },
+    h('div', { class: 'lees-rij' }, h('label', { class: 'lbl', for: 'klascode' }, 'Typ de klascode'), leesKnop(['Typ de klascode.', 'Je juf of meester geeft je de code. Ze heeft zes tekens.'], { label: '' })),
+    inp, fout, knop,
+    h('p', { class: 'tip' }, 'Je juf of meester geeft je de code (6 tekens). Dit toestel onthoudt ze.')));
+  inp.focus();
+}
+/** Klas gekend: verder als jezelf, een nieuwe reiziger maken of aanmelden met je pincode. */
+async function toonKeuzeStap(klas) {
+  const kaarten = [];
+  if (klas?.rol === 'leerkracht') {
+    // het toestel van de leerkracht: alle reizigers van de klas
+    S.pupils = await store.listPupils();
+    for (const p of S.pupils) kaarten.push(h('button', { class: 'reiziger-kaart', type: 'button', onclick: () => login(p) }, avatarBeeld(p.look, { px: 84, vorm: 'vol' }), h('span', {}, p.naam)));
+  } else if (klas?.pid) {
+    const p = await store.getPupil(klas.pid);
+    if (p) kaarten.push(h('button', { class: 'reiziger-kaart', type: 'button', id: 'mijn-kaart', onclick: () => login(p) }, avatarBeeld(p.look, { px: 84, vorm: 'vol' }), h('span', {}, p.naam)));
+  }
+  const klasNaam = klas?.naam ? `${klas.naam} (${klas.code})` : `klas ${klas?.code || ''}`;
+  loginScherm(h('section', { class: 'kaart-blok' },
+    h('div', { class: 'lees-rij' }, h('h2', {}, kaarten.length ? 'Ben jij dit?' : 'Wie trekt er mee op expeditie?'),
+      leesKnop(() => [kaarten.length ? 'Ben jij dit? Klik op je kaartje.' : 'Wie trekt er mee op expeditie?', 'Ben je nieuw? Maak je eigen reiziger.', 'Speelde je al op een ander toestel? Typ je naam en je pincode.'], { label: '' })),
+    h('p', { class: 'tip' }, `Je speelt mee in ${klasNaam}.`),
+    kaarten.length ? h('div', { class: 'reizigers' }, ...kaarten) : null,
+    h('div', { class: 'knoppen' },
+      h('button', { class: 'btn groot primair', type: 'button', id: 'nieuwe-reiziger', onclick: () => showCreator() }, 'Ik ben een nieuwe reiziger'),
+      h('button', { class: 'btn groot', type: 'button', id: 'met-pincode', onclick: () => toonPincodeStap(klas) }, 'Ik speelde al op een ander toestel')),
+    h('p', { class: 'tip' }, h('a', { href: '#', onclick: (e) => { e.preventDefault(); SB.vergeetKlas(); bewaarKlascode(null); toonKlascodeStap(); } }, 'Een andere klascode'))));
+}
+function toonPincodeStap(klas) {
+  const naam = h('input', { type: 'text', class: 'invoer', id: 'pin-naam', maxlength: 16, autocomplete: 'off', placeholder: 'Voornaam of bijnaam', 'aria-label': 'Voornaam of bijnaam' });
+  const pin = h('input', { type: 'password', class: 'invoer kort', id: 'pin-code', inputmode: 'numeric', maxlength: 4, autocomplete: 'off', placeholder: '1234', 'aria-label': 'Pincode' });
+  const fout = h('p', { class: 'fout', 'aria-live': 'polite' });
+  const knop = h('button', { class: 'btn groot primair', type: 'button', id: 'pin-aanmelden' }, 'Speel verder');
+  const go = async () => {
+    if (!/^\d{4}$/.test(pin.value)) { fout.textContent = 'Een pincode heeft 4 cijfers.'; return; }
+    knop.disabled = true; fout.textContent = '';
+    try {
+      const r = await SB.reizigerAanmelden(klas.code, naam.value, pin.value);
+      const p = await store.getPupil(r.pid);
+      if (!p) throw new Error('Je reiziger is niet gevonden. Vraag het aan je juf of meester.');
+      login(p);
+    } catch (e) { fout.textContent = e.message; knop.disabled = false; pin.select(); }
+  };
+  knop.onclick = go;
+  pin.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  loginScherm(h('section', { class: 'kaart-blok pin-blok' },
+    h('div', { class: 'lees-rij' }, h('h2', {}, 'Speel verder op dit toestel'), leesKnop(['Typ je naam zoals in de stad, en je pincode van vier cijfers.', 'Je pincode staat in je Expeditieboek. Je juf of meester kent hem ook.'], { label: '' })),
+    h('label', { class: 'lbl', for: 'pin-naam' }, 'Je naam in de stad'), naam,
+    h('label', { class: 'lbl', for: 'pin-code' }, 'Je pincode (4 cijfers)'), pin, fout, knop,
+    h('p', { class: 'tip' }, 'Je pincode vergeten? Je juf of meester ziet hem in het dashboard.'),
+    h('button', { class: 'btn', type: 'button', onclick: () => toonKeuzeStap(klas) }, 'Terug')));
+  naam.focus();
+}
+/** Na het maken van een reiziger: de pincode tonen (om later op een ander toestel verder te spelen). */
+function toonPincode(p, pin) {
+  loginScherm(h('section', { class: 'kaart-blok pin-blok' },
+    h('div', { class: 'lees-rij' }, h('h2', {}, `Welkom, ${p.naam}!`), leesKnop([`Welkom, ${p.naam}!`, 'Dit is jouw pincode. Schrijf hem in je Expeditieboek.', 'Met je naam en je pincode speel je verder op een ander toestel.'], { label: '' })),
+    h('p', {}, 'Dit is jouw pincode. Schrijf hem in je Expeditieboek:'),
+    h('p', { class: 'pincode-groot', id: 'mijn-pincode' }, pin),
+    h('p', { class: 'tip' }, 'Met je naam en deze pincode speel je verder op een ander toestel. Je juf of meester kent hem ook. Geef hem aan niemand anders.'),
+    h('button', { class: 'btn groot primair', type: 'button', id: 'pincode-ok', onclick: () => login(p) }, 'Begin de expeditie')));
+}
 
 /** Portret van een reiziger (3D-figuur, als beeld). */
 function avatarPortret(look, px = 48, vorm = 'portret') { return avatarBeeld(look || DEFAULT_LOOK, { px, vorm }); }
@@ -173,15 +285,27 @@ function showCreator({ pupil = null, onKlaar = null } = {}) {
     if (/@|\d{3,}/.test(n)) { fout.textContent = 'Gebruik enkel een voornaam of bijnaam.'; return; }
     const all = await store.listPupils();
     const bestaat = all.find(p => p.naam.toLowerCase() === n.toLowerCase() && p.id !== pupil?.id);
-    if (bestaat) { fout.textContent = `${bestaat.naam} bestaat al. Ga terug en klik op je kaartje.`; return; }
+    if (bestaat) { fout.textContent = ONLINE ? SB.BERICHT.bijnaam_bestaat : `${bestaat.naam} bestaat al. Ga terug en klik op je kaartje.`; return; }
     if (pupil) {
       const fresh = (await store.getPupil(pupil.id)) || pupil;
       fresh.naam = n; fresh.look = look;
-      await store.savePupil(fresh); S.pupil = fresh;
+      try { await store.savePupil(fresh); } catch (e) { fout.textContent = e.message; return; }
+      S.pupil = fresh;
       sync.publish('klas:update', {});
       onKlaar?.(); return enterWorld();
     }
     const p = { id: uid('ll'), naam: n, look, xp: 0, routes: Object.fromEntries(MACHTEN.map(m => [m.id, 'kompas'])), codes: [], kosmetiek: [], gemaakt: Date.now() };
+    if (ONLINE && SB.huidigeKlas()?.rol !== 'leerkracht') {
+      // online: de klasdatabank maakt de reiziger (met een pincode om op een ander toestel verder te spelen)
+      const knop = $('#start-reis'); if (knop) knop.disabled = true;
+      let r;
+      try { r = await SB.nieuweReiziger(SB.huidigeKlas()?.code || bewaardeKlascode(), n); }
+      catch (e) { fout.textContent = e.message; if (knop) knop.disabled = false; return; }
+      p.id = r.pid; p.naam = r.bijnaam;
+      await store.savePupil(p);
+      sync.publish('klas:update', {});
+      return toonPincode(p, r.pin);
+    }
     await store.savePupil(p);
     sync.publish('klas:update', {});
     login(p);
@@ -935,7 +1059,9 @@ async function openHuis() {
     const mine = (S.pupil.kosmetiek || []).filter(id => HUISDECOR[id]);
     const deco = { ...(S.pupil.huis?.deco || {}) };
     add(pan.body, h('div', { class: 'gids-zegt' }, gidsPortret('bram', 3), h('p', {}, 'Dit is jouw plek in de Reizigerswijk. Het dak heeft de kleur van je jas. Met extraatjes uit de Codekluis versier je je huis.')),
-      h('div', { class: 'knoppen' }, h('button', { type: 'button', class: 'btn primair', onclick: () => pasReizigerAan() }, 'Pas je reiziger aan')));
+      h('div', { class: 'knoppen' }, h('button', { type: 'button', class: 'btn primair', onclick: () => pasReizigerAan() }, 'Pas je reiziger aan')),
+      ONLINE ? h('p', { class: 'tip', id: 'huis-pincode' }) : null);
+    if (ONLINE) SB.mijnPin().then(pin => { const el = $('#huis-pincode'); if (el && pin) el.textContent = `Jouw pincode om op een ander toestel verder te spelen: ${pin}`; }).catch(() => {});
     if (!mine.length) { add(pan.body, h('p', { class: 'tip' }, 'Nog geen versiering. Vind geheime codes in je Expeditieboek en typ ze in de Codekluis.')); return; }
     add(pan.body, h('div', { class: 'stalen huis-deco' }, ...mine.map(id => h('button', { type: 'button', class: 'staal tekst' + (deco[id] ? ' sel' : ''), 'aria-pressed': String(!!deco[id]), onclick: () => zet(id, !deco[id]) }, HUISDECOR[id]))),
       h('p', { class: 'tip' }, 'Klik om aan of uit te zetten. Je ziet het meteen in de stad.'));

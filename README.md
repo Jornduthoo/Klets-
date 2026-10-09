@@ -18,7 +18,8 @@ De leerlingen heten **Reizigers**: ze reizen door zeven thema's, en elk thema he
 de Markt met het Belfort, trapgevels, een haven met vuurtoren en de sluis van Zeebrugge, en een waterval aan de stadsrand.
 Het water is in het begin vol slijk van de eindbaas **De Slijkkraak**; elk labo dat de klas haalt, maakt één zone weer helder.
 
-- Geen build-stap, geen installatie: gewone HTML, CSS en ES-modules. Eén meegeleverde bibliotheek: **three.js** (3D), lokaal in `vendor/` (zie *Licenties*).
+- Geen build-stap, geen installatie: gewone HTML, CSS en ES-modules. Meegeleverde bibliotheken, lokaal in `vendor/` (zie *Licenties*): **three.js** (3D), en enkel als de klas online staat **supabase-js** en **qrcode-generator**.
+- Optioneel: **klas online** met een gedeelde klasdatabank in Supabase (EU). Zie *Klas online (Supabase)* hieronder en [`docs/supabase-stappen.md`](docs/supabase-stappen.md).
 - Geen externe lettertypes, geen CDN. Eén netwerkverzoek: het **echte weer van Brugge** bij Open-Meteo. Zonder internet valt de app terug op rustig seizoensweer.
 - Werkt op elke statische server (ook GitHub Pages).
 - Alle tekst in het Vlaams-Nederlands.
@@ -40,6 +41,7 @@ Open daarna:
 | `digibord.html` | de stad en de eindbaas op het digibord | http://localhost:8000/digibord.html |
 
 **Standaard-PIN van de leerkracht: `1234`.** Verander hem meteen bij *Dashboard > Instellingen > PIN*.
+(Staat de klas online, dan meldt de leerkracht zich aan met e-mail en wachtwoord in plaats van de PIN.)
 
 Tip om alles te verkennen: open het dashboard, ga naar *Instellingen > Demodata maken* (8 voorbeeldreizigers met resultaten en labo's),
 en klik bovenaan op *Open de stad als leerkracht*.
@@ -181,8 +183,15 @@ Twee weergaven (knop *Toon de stad* / *Toon De Slijkkraak*, of rechtstreeks `dig
   tools/valideer-stad.mjs    controleert de plattegrond met node (wegen, kavels, water, bruggen, spoor): node tools/valideer-stad.mjs
   js/config.js               domeinen, routes, gidsen, rangen, XP, keuze van de backend
   js/core/util.js            DOM-helper, normalisatie, getallen lezen, spraak, klank
-  js/core/store.js           opslaglaag: LocalStore (localStorage) + SupabaseStore (stub)
-  js/core/sync.js            live-laag: LocalSync (BroadcastChannel) + SupabaseSync (stub)
+  js/core/store.js           opslaglaag: LocalStore (localStorage) en createStore()
+  js/core/supabase-store.js  SupabaseStore: dezelfde interface op de klasdatabank, met kopie, wachtrij (offline) en samenvoegen
+  js/core/sync.js            live-laag: LocalSync (BroadcastChannel) + SupabaseSync (Realtime Broadcast, privékanaal per klas)
+  js/core/backend.js         welke opslag op dit toestel: config.js, Instellingen (localStorage) of de klaslink (?k=&s=&a=)
+  js/core/supabase.js        de Supabase-client, aanmelden (leerkracht en reizigers), klaskanaal, foutmeldingen in het Nederlands
+  sql/vagant-supabase.sql    tabellen, Row Level Security, functies en Realtime-regels (eenmalig plakken in Supabase)
+  docs/supabase-stappen.md   stappenplan voor de leerkracht
+  tests/                     RLS-tests (PGlite), adaptertests (nagemaakte client), browsertest van de online klas
+  vendor/supabase-js-2.117.2.esm.js, vendor/qrcode-generator-1.4.4.esm.js  (+ licenties)
   js/core/model.js           themacatalogus, routes, XP/rangen, doelen per reiziger, codes, uitrusting
   js/city/layout.js          plattegrond: ringen, lanen, spoor, wijken, kavels, plein, het waternet (vesten, reien, Minnewater, haven), huizen aan het water
   js/city/brugge.js          de Brugse plekken: Markt en Belfort, Rozenhoedkaai, Minnewater, haven, sluis, kerstmarkt
@@ -232,7 +241,7 @@ Twee weergaven (knop *Toon de stad* / *Toon De Slijkkraak*, of rechtstreeks `dig
 - `store` (async): `getSettings/saveSettings`, `listPupils/getPupil/savePupil/deletePupil`, `addAttempt/listAttempts`, `addGallery/listGallery`, `addEvent/listEvents`, `exportAll/importAll/reset`, `onChange`.
 - `sync`: `connect()`, `publish(type, payload)`, `subscribe(type, handler)`, `close()`.
 
-`BACKEND` in `js/config.js` kiest de implementatie (`'local'` nu, `'supabase'` later).
+`BACKEND` in `js/config.js` kiest de standaard (`'local'`); de schakelaar *Klas online (Supabase)* in het dashboard of de klaslink zet een toestel op `'supabase'` (`js/core/backend.js`).
 
 **Gegevens.**
 - reiziger: `{ id, naam, look, routes: {Wetenschap: 'kompas', ...}, xp, codes[], kosmetiek[], uitrusting{} }`
@@ -344,6 +353,10 @@ het dashboard, het digibord en de eindbaas lezen alles uit dit object.
 - Het dashboard (Instellingen) toont welke stem klinkt; het digibord heeft een *Lees voor* bij het verhaal en het weekverhaal (Vonk).
 
 ## Licenties
+- **supabase-js** 2.117.2 (`vendor/supabase-js-2.117.2.esm.js`): `@supabase/supabase-js` met zijn onderdelen (auth-js, postgrest-js,
+  realtime-js, storage-js, functions-js, phoenix, iceberg-js, tslib), ongewijzigd gebundeld tot één ES-module met esbuild 0.25.10.
+  MIT (tslib: 0BSD). Volledige teksten: `vendor/supabase-LICENSE.txt`. Wordt enkel geladen als de klas online staat.
+- **qrcode-generator** 1.4.4 (`vendor/qrcode-generator-1.4.4.esm.js`), Kazuhiko Arase, MIT: `vendor/qrcode-generator-LICENSE.txt`.
 - **three.js** r170 (`vendor/three.module.min.js`, ongewijzigd uit `three@0.170.0`, bestand `build/three.module.min.js`),
   MIT-licentie, Copyright 2010-2024 three.js authors. Volledige tekst: `vendor/three-LICENSE.txt`.
   SHA-256: `08fd7545d13d2c7fb65ab691530a802dafefd638596501854f267d0fb13c39e7`.
@@ -351,7 +364,8 @@ het dashboard, het digibord en de eindbaas lezen alles uit dit object.
 
 ## Privacy en gevoeligheid
 - Enkel een voornaam of bijnaam. Geen e-mail, achternaam, geboortedatum of herkomst. De app vraagt nooit waar iemand vandaan komt.
-- Alles blijft in de browser van het toestel (localStorage). Het enige netwerkverzoek is het weerbericht van Brugge; daar gaat geen enkel gegeven van een leerling naartoe.
+- Zonder klasdatabank blijft alles in de browser van het toestel (localStorage). Het enige netwerkverzoek is dan het weerbericht van Brugge; daar gaat geen enkel gegeven van een leerling naartoe.
+- Met de klasdatabank (Supabase, EU): enkel bijnaam, pincode, uiterlijk, resultaten en galerijfoto's. Reizigers hebben geen e-mail (anonieme sessie per toestel); enkel de leerkracht heeft een account. Row Level Security: een klas ziet enkel haar eigen gegevens, een reiziger schrijft enkel zijn eigen gegevens. Zie `docs/supabase-stappen.md` (ook: verwerkersovereenkomst, opruimen).
 - Beeldtaal zonder grenzen, paspoorten of oorlog. De Slijkkraak is een grappig slijkmonster, geen eng beest; hij wordt verslagen met proper water, niet met wapens.
 - De stad toont alleen aantallen ("5 reizigers bouwden mee"). Wie een doel nog niet haalde, wordt nergens getoond of gerangschikt.
 
@@ -362,15 +376,36 @@ het dashboard met al zijn tabbladen, het digibord (stad en eindbaas), de eindbaa
 
 Beperkingen:
 - **Alleen thema 1 heeft inhoud.** De andere zes staan in de lijst en in De Poort, maar zijn nog niet uitgewerkt (het dashboard zet ze op "binnenkort").
-- **Opslag per toestel.** Elke laptop heeft zijn eigen gegevens. Tot de Supabase-koppeling er is: *Exporteer alles (JSON)* op elke laptop en *Importeer en voeg samen* op de computer van de leerkracht.
-- **De eindbaas** werkt enkel tussen tabbladen van dezelfde browser (BroadcastChannel). Voor echte laptops in de klas: `SupabaseSync`.
-- `SupabaseStore` en `SupabaseSync` zijn stubs met TODO's: project in de EU-regio, Row Level Security per klas, enkel bijnamen.
+- **Zonder klasdatabank: opslag per toestel.** Elke laptop heeft zijn eigen gegevens (*Exporteer alles* / *Importeer en voeg samen*), en de eindbaas werkt enkel tussen tabbladen van dezelfde browser. Met *Klas online* is dat opgelost.
+- **Klas online** is getest zonder echte Supabase (geen netwerk in de testomgeving): het SQL-script in Postgres 17 (PGlite) met 83 RLS-tests, de adapters met een nagemaakte client, en de schermen in de browser met een nagemaakte klasdatabank. De eerste echte test gebeurt met *Test verbinding* in het dashboard.
 - Spraakopnames zijn nog niet gebouwd; die onderdelen zijn luister- en keuzevragen.
 - De galerij bewaart verkleinde foto's in localStorage (enkele MB per browser).
 - Voorlezen gebruikt de stemmen van het besturingssysteem; zonder Nederlandse stem leest de browser met een andere stem.
 
-## Supabase later (stappen)
-1. Supabase-project aanmaken in **EU-regio**. Tabellen `klassen`, `leerlingen`, `pogingen`, `galerij`, `gebeurtenissen` (zie TODO in `js/core/store.js`).
-2. Row Level Security: elke klas ziet alleen haar eigen rijen; leerlingen enkel met bijnaam.
-3. `SupabaseStore` en `SupabaseSync` invullen (Realtime Broadcast voor de eindbaas), `BACKEND` in `js/config.js` op `'supabase'` zetten.
-4. De PIN van de leerkracht vervangen door een echte aanmelding voor de leerkracht.
+## Klas online (Supabase)
+
+Het volledige stappenplan staat in [`docs/supabase-stappen.md`](docs/supabase-stappen.md). Kort:
+
+1. Supabase-project in de **EU** (Ierland of Frankfurt). Het project van de klas bestaat al; URL en publishable key staan in `js/config.js`.
+2. *Authentication*: **anonieme aanmeldingen aan**, e-mail aan, *Site URL* en *Redirect URLs* = het Netlify-adres, rate limit voor anonieme aanmeldingen op 100.
+3. *SQL Editor*: plak `sql/vagant-supabase.sql` en klik *Run* (mag opnieuw). Controleer met de zelfcontrole-query dat RLS overal aan staat.
+4. Dashboard (PIN 1234) > *Instellingen > Klas online (Supabase)*: **Test verbinding**, vink *Klas online* aan, maak je account, **Maak je klas** -> klascode.
+5. Deel de **klaslink** of **QR-code** (Instellingen). Reizigers kiezen een bijnaam en krijgen een pincode van 4 cijfers; daarmee spelen ze verder op elke Chromebook.
+6. **Deel nooit de secret key** (`sb_secret_...` of `service_role`). De publishable key is publiek bedoeld.
+
+Hoe het werkt:
+- Tabellen: `klassen` (klascode), `reizigers` (bijnaam + pincode), `leden` (welk toestel bij welke klas en reiziger hoort),
+  `klasdata` (alles wat `LocalStore` bewaart, als documenten: `settings`, `pupil`, `attempt`, `gallery`, `event`).
+- Functies (RPC): `vagant_status`, `vagant_maak_klas`, `vagant_klas_info`, `vagant_mijn_klas`, `vagant_nieuwe_reiziger`,
+  `vagant_aanmelden`, `vagant_verwijder_reiziger`, `vagant_nieuwe_pin`, `vagant_wis_klasdata`.
+- Live: Realtime Broadcast op het privékanaal `klas:<klas_id>` (RLS op `realtime.messages`): de eindbaas, en een klein bericht `db` bij elke wijziging.
+- Offline: elke wijziging gaat eerst naar een wachtrij in localStorage en daarna naar de server; zonder wifi blijft ze staan tot de verbinding terug is.
+
+Tests (niet nodig om de app te gebruiken):
+
+```bash
+npm i --no-save --prefix /tmp/pgl @electric-sql/pglite@0.3.7
+PGLITE=/tmp/pgl/node_modules/@electric-sql/pglite/dist/index.js node tests/rls.test.mjs   # SQL + RLS in Postgres 17
+node tests/adapters.test.mjs                                                            # SupabaseStore/SupabaseSync
+python3 -m http.server 8765 & node tests/e2e-online.mjs                                  # schermen (Playwright)
+```

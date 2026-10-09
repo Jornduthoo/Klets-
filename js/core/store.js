@@ -1,5 +1,5 @@
 // Opslaglaag. Alle schermen praten enkel met deze interface, zodat de opslag
-// later kan wisselen (localStorage nu, Supabase later) zonder de rest te veranderen.
+// kan wisselen (localStorage of de klasdatabank in Supabase) zonder de rest te veranderen.
 //
 // Interface (alles async):
 //   getSettings() / saveSettings(patch)
@@ -10,7 +10,8 @@
 //   exportAll() / importAll(data, {merge}) / reset()
 //   onChange(callback)  -> functie om af te melden
 
-import { BACKEND, DEFAULT_PIN } from '../config.js';
+import { DEFAULT_PIN } from '../config.js';
+import { backendKeuze } from './backend.js';
 
 export const DEFAULT_SETTINGS = {
   pin: DEFAULT_PIN,
@@ -104,43 +105,11 @@ export class LocalStore {
   }
 }
 
-/**
- * Stub voor een gedeelde opslag in Supabase (Postgres). Zelfde interface als LocalStore.
- *
- * TODO (volgende versie):
- *  1. Supabase-project aanmaken in de EU-regio (eu-central-1 Frankfurt of eu-west-1 Ierland) -> AVG.
- *  2. Tabellen: klassen(id, naam, pin_hash), leerlingen(id, klas_id, naam, avatar jsonb, routes jsonb, xp, codes text[], kosmetiek text[]),
- *     pogingen(id, klas_id, pid, missie, week, route, items jsonb, goed, totaal, ts), galerij(...), gebeurtenissen(...).
- *     Enkel een voornaam of bijnaam: GEEN e-mail, geen achternaam, geen geboortedatum of herkomst.
- *  3. Row Level Security: een klas ziet alleen haar eigen rijen (klascode + anonieme sessie per toestel).
- *  4. onChange: supabase.channel('db').on('postgres_changes', ...) doorgeven aan de callback.
- *  5. Supabase-client laden als ES-module (bv. via cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm) of meeleveren in /vendor.
- */
-export class SupabaseStore {
-  constructor({ url, anonKey } = {}) {
-    this.url = url; this.anonKey = anonKey;
-    if (!url || !anonKey) console.warn('SupabaseStore: nog niet geconfigureerd (zie js/config.js).');
-  }
-  _todo(naam) { return Promise.reject(new Error(`SupabaseStore.${naam}() is nog niet gebouwd. Gebruik BACKEND.store = 'local'.`)); }
-  getSettings() { return this._todo('getSettings'); }
-  saveSettings() { return this._todo('saveSettings'); }
-  listPupils() { return this._todo('listPupils'); }
-  getPupil() { return this._todo('getPupil'); }
-  savePupil() { return this._todo('savePupil'); }
-  deletePupil() { return this._todo('deletePupil'); }
-  addAttempt() { return this._todo('addAttempt'); }
-  listAttempts() { return this._todo('listAttempts'); }
-  addGallery() { return this._todo('addGallery'); }
-  listGallery() { return this._todo('listGallery'); }
-  deleteGallery() { return this._todo('deleteGallery'); }
-  addEvent() { return this._todo('addEvent'); }
-  listEvents() { return this._todo('listEvents'); }
-  exportAll() { return this._todo('exportAll'); }
-  importAll() { return this._todo('importAll'); }
-  reset() { return this._todo('reset'); }
-  onChange() { return () => {}; }
-}
+// SupabaseStore (gedeelde klasdatabank, zelfde interface): zie supabase-store.js.
+export { SupabaseStore } from './supabase-store.js';
+import { SupabaseStore } from './supabase-store.js';
 
 export function createStore() {
-  return BACKEND.store === 'supabase' ? new SupabaseStore(BACKEND.supabase) : new LocalStore();
+  const b = backendKeuze();
+  return b.store === 'supabase' ? new SupabaseStore({ url: b.url, anonKey: b.anonKey }) : new LocalStore();
 }

@@ -14,6 +14,8 @@ import { themaVoor } from '../../data/themas.js';
 import { volgWeer, weerTekst } from '../city/weer.js';
 import { waterTekst } from '../city/water.js';
 import { leesKnop } from '../core/stem.js';
+import { backendKeuze } from '../core/backend.js';
+import * as SB from '../core/supabase.js';
 
 const store = createStore();
 const sync = createSync('klas');
@@ -48,8 +50,20 @@ async function init() {
   sync.subscribe('klas:update', () => toonStad());
   store.onChange(() => toonStad());
   volgWeer((w) => { VIEW.weer = w; VIEW.stad?.setWeer(w); ui(); });
+  if (backendKeuze().online) return startOnline();
   if (Number(localStorage.getItem('klets:v1:leerkrachtTot') || 0) > Date.now()) return build();
   pin();
+}
+/** Klas online: het digibord gebruikt de aanmelding van het leerkrachtendashboard op dit toestel. */
+async function startOnline() {
+  let ok = false;
+  try { ok = !!(await SB.leerkrachtSessie()) && SB.huidigeKlas()?.rol === 'leerkracht'; } catch { ok = false; }
+  if (ok) return build();
+  $('#app').innerHTML = '';
+  $('#app').append(h('main', { class: 'login' }, h('h1', { class: 'logo' }, METHODE), h('section', { class: 'kaart-blok' },
+    h('h2', {}, 'Eerst aanmelden'),
+    h('p', {}, 'De klas staat online. Meld je op dit toestel eerst aan in het leerkrachtendashboard (e-mail en wachtwoord). Daarna opent het digibord vanzelf.'),
+    h('a', { class: 'btn primair', href: 'leerkracht.html', id: 'naar-dashboard' }, 'Naar het leerkrachtendashboard'))));
 }
 function pin() {
   const inp = h('input', { type: 'password', class: 'invoer', id: 'pin', inputmode: 'numeric', placeholder: 'PIN', 'aria-label': 'PIN' });
