@@ -217,7 +217,7 @@ export class Wegen3D {
   }
   _tekenOverwegen(t) {
     let a = 0, l = 0;
-    for (const o of this.overwegen) for (const b of o.bomen) {
+    for (const o of this.overwegen || []) for (const b of o.bomen) {
       // arm wijst van de paal naar het midden van de weg (-rechts), en draait omhoog als de overweg open is
       const hoek = (1 - o.dicht) * 1.35;
       const yaw = Math.atan2(b.qz, -b.qx);
@@ -240,7 +240,7 @@ export class Wegen3D {
       this.liggers = new THREE.InstancedMesh(new THREE.BoxGeometry(0.18, 0.06, 0.78), new THREE.MeshLambertMaterial({ color: '#7a5f48' }), n);
       this.liggers.receiveShadow = true; this.scene.add(this.liggers);
     }
-    const vrij = this.overwegen.map(o => o.x);
+    const vrij = (this.overwegen || []).map(o => o.x);
     let k = 0;
     for (const tz of SPOOR_SPOREN) for (let x = -L / 2; x < L / 2; x += 0.7) {
       if (vrij.some(v => Math.abs(v - x) < WEG_HALF + 0.08)) continue;
@@ -375,7 +375,7 @@ export class Wegen3D {
         let max = L - KRUIS;
         if (i > 0) max = Math.min(max, r[i - 1].p - 1.05);
         // stoppen voor een gesloten overweg
-        for (const o of this.overwegen) if (o.tak === a.tak.id && o.dicht > 0.02) {
+        for (const o of this.overwegen || []) if (o.tak === a.tak.id && o.dicht > 0.02) {
           const po = a.dir > 0 ? o.s : L - o.s, stop = po - SPOOR_HALF - 0.55;
           if (a.p <= stop + 0.05) max = Math.min(max, stop);
         }
